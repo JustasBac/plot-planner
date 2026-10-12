@@ -261,6 +261,9 @@ kbd { font: 11.5px var(--f-mono); border: 1px solid var(--rule); border-bottom-w
 .dialog h2 { margin: 0 0 8px; font: 700 22px/1.15 var(--f-display); letter-spacing: .02em; text-transform: uppercase; text-wrap: balance; }
 .dialog p { margin: 0 0 18px; color: var(--muted); }
 .dialog p b { color: var(--ink); }
+.confirm-field { display: grid; gap: 6px; margin: -6px 0 18px; font-size: 13.5px; color: var(--muted); }
+.confirm-field input { width: 100%; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--paper); color: var(--ink); font: inherit; }
+.confirm-field input:focus { border-color: var(--bad); outline: none; }
 .dialog .row-btns { justify-content: flex-end; }
 .btn.danger-fill { background: var(--bad); border-color: var(--bad); color: #fff; }
 .tab-add {
@@ -494,6 +497,7 @@ button.person { cursor: pointer; }
   <form method="dialog">
     <h2 id="confirm-title"></h2>
     <p id="confirm-text"></p>
+    <label class="confirm-field" id="confirm-field" for="confirm-input" hidden><span id="confirm-hint"></span><input id="confirm-input" type="text" autocomplete="off" spellcheck="false"></label>
     <div class="row-btns">
       <button class="btn" value="cancel" autofocus>Keep it</button>
       <button class="btn danger-fill" value="ok" id="confirm-ok"></button>
@@ -1984,6 +1988,7 @@ $('#a-reset').addEventListener('click', () => {
     title: `Reset “${page.name}”?`,
     html: `${shapeSummary(page)} They are replaced with the example layout: a house, carport, terrace and driveway.`,
     ok: 'Reset page',
+    typeName: page.name,
     run: () => {
       const p = state.pages.find(x => x.id === page.id);
       if (!p || pageLock()) { return; }
@@ -2041,18 +2046,32 @@ function addPage(copy) {
   });
 }
 // confirmation for actions that throw work away; "Keep it" is the default button
-function confirmAction({ title, html, ok, run }) {
+// with typeName, the red button only works once that exact name is typed
+function confirmAction({ title, html, ok, run, typeName }) {
   $('#confirm-title').textContent = title;
   $('#confirm-text').innerHTML = html;
   $('#confirm-ok').textContent = ok || '';
   $('#confirm-ok').hidden = !ok;
+  $('#confirm-field').hidden = !typeName;
+  $('#confirm-hint').innerHTML = typeName ? `Type <b>${esc(typeName)}</b> to confirm` : '';
+  $('#confirm-input').value = '';
+  $('#confirm-ok').disabled = !!typeName;
   ui.confirmRun = run;
+  ui.confirmName = typeName || null;
   $('#confirm').showModal();
+  if (typeName) { $('#confirm-input').focus(); }
 }
+const nameTyped = () => !ui.confirmName || $('#confirm-input').value.trim() === ui.confirmName;
+$('#confirm-input').addEventListener('input', () => { $('#confirm-ok').disabled = !nameTyped(); });
+$('#confirm-input').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') { return; }
+  e.preventDefault();
+  if (nameTyped()) { $('#confirm-ok').click(); }
+});
 $('#confirm form').addEventListener('submit', e => {
   const run = ui.confirmRun;
   ui.confirmRun = null;
-  if (run && e.submitter && e.submitter.value === 'ok') { run(); }
+  if (run && e.submitter && e.submitter.value === 'ok' && nameTyped()) { run(); }
 });
 function shapeSummary(page) {
   const n = page.objects.length;
@@ -2072,6 +2091,7 @@ function askDeletePage(id) {
     title: `Delete “${page.name}”?`,
     html: `${shapeSummary(page)} It disappears for everyone who uses this plan.`,
     ok: 'Delete page',
+    typeName: page.name,
     run: () => {
       const i = state.pages.findIndex(x => x.id === id);
       if (i < 0 || state.pages.length < 2) { return; }
