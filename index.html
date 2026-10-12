@@ -279,6 +279,12 @@ kbd { font: 11.5px var(--f-mono); border: 1px solid var(--rule); border-bottom-w
 .inner-lbl { fill: var(--muted); font-size: 11.5px; }
 .obj.k-room polygon { fill: var(--room); stroke: none; fill-opacity: 1; }
 .room-wall { fill: none; stroke: var(--wall); stroke-linecap: square; pointer-events: none; }
+.plan-detail { pointer-events: none; }
+.plan-detail .pd-inner { fill: none; stroke: rgba(255, 255, 255, .55); stroke-width: 1; }
+.plan-detail .pd-wall { fill: none; stroke: rgba(255, 255, 255, .8); stroke-linecap: square; }
+.plan-glyph .pd-gap { fill: var(--c); stroke: none; }
+.plan-glyph .pd-gap.k-window { fill: rgba(255, 255, 255, .35); stroke: rgba(255, 255, 255, .8); }
+.plan-glyph .leaf, .plan-glyph .swing, .plan-glyph .pane { stroke: rgba(255, 255, 255, .85); }
 .obj.k-furn polygon { fill: transparent; stroke: none; }
 .obj.k-furn.st-out polygon { stroke: var(--bad); stroke-width: 2; }
 .obj.k-car polygon { fill: transparent; stroke: none; }
@@ -885,7 +891,7 @@ function objStatus(o) {
 
 // state: the plot and the rules are shared, each page holds its own shapes
 let state;
-const view = { k: 10, tx: 0, ty: 0, fitted: false };
+const view = { k: 10, tx: 0, ty: 0, rot: 0, fitted: false };
 const ui = { room: null, press: null, tool: 'select', sel: null, measure: null, drag: null, formSnap: null, hiWall: null, lastTap: {}, page: null, renaming: null };
 const undoStack = [], redoStack = [];
 const PAGE_KEY = 'plot-planner.page';
@@ -1014,8 +1020,9 @@ function settleBuilding() {
   const b = bbox(h.pts), c = [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2];
   if (Math.abs(c[0]) < 1e-6 && Math.abs(c[1]) < 1e-6) { return; }
   recenter(h);
-  view.tx += c[0] * view.k;
-  view.ty += c[1] * view.k;
+  const shift = mul(rotV(c, view.rot), view.k);
+  view.tx += shift[0];
+  view.ty += shift[1];
 }
 function mutate(fn) {
   const prev = snapshot();
@@ -1029,7 +1036,7 @@ const stageSize = () => [svg.clientWidth, svg.clientHeight];
 function fit() {
   const [W, H] = stageSize();
   if (!W || !H) { return; }
-  const b = bbox(outline()), pad = Math.min(56, Math.min(W, H) * 0.12);
+  const b = bbox(outline().map(p => rotV(p, view.rot))), pad = Math.min(56, Math.min(W, H) * 0.12);
   view.k = Math.min((W - 2 * pad) / (b.w || 1), (H - 2 * pad) / (b.h || 1));
   view.tx = W / 2 - (b.x0 + b.x1) / 2 * view.k;
   view.ty = H / 2 - (b.y0 + b.y1) / 2 * view.k;
@@ -1043,7 +1050,8 @@ function zoomAt(p, f) {
   view.k = nk;
   render();
 }
-const toWorld = p => [(p[0] - view.tx) / view.k, (p[1] - view.ty) / view.k];
+const toWorld = p => rotV([(p[0] - view.tx) / view.k, (p[1] - view.ty) / view.k], -view.rot);
+const toScreen = p => add(mul(rotV(p, view.rot), view.k), [view.tx, view.ty]);
 function evPt(e) { const r = svg.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
 
 // room planner: the building is shown straight; its rooms and furniture use the building's own coordinates
@@ -1089,6 +1097,7 @@ function closeRoomPlanner() {
 }
 function applyMode() {
   const h = host();
+  view.rot = h ? h.rot : 0;
   document.querySelector('.app').classList.toggle('room-mode', !!h);
   $('#brand-sub').textContent = h ? `Room planner · ${h.name}` : 'Site plan · 1 square = 1 m';
   $('#add-title').textContent = h ? 'Add to the building' : 'Add to plan';
@@ -1450,12 +1459,39 @@ menu.addEventListener('keydown', e => {
 });
 document.addEventListener('pointerdown', e => { if (!menu.hidden && !menu.contains(e.target)) { closeMenu(); } }, true);
 
+// real width of a shape label in its font, so labels are only turned when they really do not fit
+const measure = document.createElement('canvas').getContext('2d');
+function labelWidth(l) {
+  if (l.cls === 'o-name') {
+    measure.font = '700 14px "Barlow Condensed", "Arial Narrow", sans-serif';
+    return measure.measureText(l.raw.toUpperCase()).width + l.raw.length * 0.56;
+  }
+  measure.font = '500 12.5px "Barlow Condensed", "Arial Narrow", sans-serif';
+  return measure.measureText(l.raw).width;
+}
+
+// a building's rooms, doors and windows drawn on the plot; only to look at, they are edited in the room planner
+function interiorPreview(o, S, f, k) {
+  const toPlot = p => add([o.x, o.y], rotV(p, o.rot));
+  const line = ([a, b]) => { const p = S(toPlot(a)), q = S(toPlot(b)); return `M${f(p[0])} ${f(p[1])}L${f(q[0])} ${f(q[1])}`; };
+  const inner = inset(o.pts, wallOf(o)) || o.pts;
+  let out = `<g class="plan-detail"><path class="pd-inner" d="${edges(inner).map(line).join('')}Z"/>`;
+  const walls = o.interior.items.filter(r => kindOf(r) === 'room').flatMap(r => innerWalls(corners(r), inner));
+  if (walls.length) { out += `<path class="pd-wall" d="${walls.map(line).join('')}" style="stroke-width:${Math.max(1, 0.12 * k).toFixed(1)}px"/>`; }
+  for (const r of o.interior.items.filter(isOpening)) {
+    const sc = S(toPlot([r.x, r.y])), b = bbox(r.pts);
+    out += `<g class="glyph plan-glyph" transform="translate(${f(sc[0])} ${f(sc[1])}) rotate(${o.rot + r.rot + view.rot}) scale(${k.toFixed(3)})">` +
+      `<rect class="pd-gap k-${kindOf(r)}" x="${b.x0}" y="${b.y0}" width="${b.w}" height="${b.h}"/>${glyph(r)}</g>`;
+  }
+  return out + '</g>';
+}
+
 // rendering
 function render() {
   const [W, H] = stageSize();
   if (!W || !H) { return; }
   const k = view.k;
-  const S = p => [p[0] * k + view.tx, p[1] * k + view.ty];
+  const S = toScreen;
   const f = v => v.toFixed(1);
   const pts = P => P.map(p => S(p).map(f).join(',')).join(' ');
   const rotAt = (a, p) => `transform="rotate(${a.toFixed(1)} ${f(p[0])} ${f(p[1])})"`;
@@ -1465,12 +1501,14 @@ function render() {
   if (state.showGrid) {
     const step = k >= 9 ? 1 : k * 5 >= 9 ? 5 : 10, every = step === 1 ? 5 : 2;
     let minor = '', major = '';
-    for (let x = Math.ceil(-view.tx / k / step) * step; x <= (W - view.tx) / k; x += step) {
-      const d = `M${f(x * k + view.tx)} 0V${H}`;
+    const wb = bbox([[0, 0], [W, 0], [W, H], [0, H]].map(toWorld));
+    const line = (a, b) => { const p = S(a), q = S(b); return `M${f(p[0])} ${f(p[1])}L${f(q[0])} ${f(q[1])}`; };
+    for (let x = Math.ceil(wb.x0 / step) * step; x <= wb.x1; x += step) {
+      const d = line([x, wb.y0], [x, wb.y1]);
       if (Math.round(x / step) % every === 0) { major += d; } else { minor += d; }
     }
-    for (let y = Math.ceil(-view.ty / k / step) * step; y <= (H - view.ty) / k; y += step) {
-      const d = `M0 ${f(y * k + view.ty)}H${W}`;
+    for (let y = Math.ceil(wb.y0 / step) * step; y <= wb.y1; y += step) {
+      const d = line([wb.x0, y], [wb.x1, y]);
       if (Math.round(y / step) % every === 0) { major += d; } else { minor += d; }
     }
     h += `<path d="${minor}" class="grid"/><path d="${major}" class="grid major"/>`;
@@ -1507,25 +1545,36 @@ function render() {
   for (const o of items().slice().sort((a, b) => LAYER[kindOf(a)] - LAYER[kindOf(b)])) {
     const st = statuses.get(o.id), C = corners(o), c = S(polyCentroid(C)), sz = objSize(o), kind = kindOf(o);
     h += `<g data-obj="${esc(o.id)}" class="obj t-${o.type} k-${kind} st-${st.level}${o.id === ui.sel ? ' sel' : ''}"><polygon points="${pts(C)}"/>`;
+    if (!rh && o.interior && o.interior.items.length) { h += interiorPreview(o, S, f, k); }
     if (kind === 'room') {
       const d = innerWalls(C, roomFloor).map(([a, b]) => `M${S(a).map(f).join(' ')}L${S(b).map(f).join(' ')}`).join('');
       if (d) { h += `<path class="room-wall" d="${d}" style="stroke-width:${Math.max(1.5, 0.12 * k).toFixed(1)}px"/>`; }
     }
     if (kind === 'furn' || kind === 'door' || kind === 'window' || kind === 'car') {
       const sc = S([o.x, o.y]);
-      h += `<g class="glyph" transform="translate(${f(sc[0])} ${f(sc[1])}) rotate(${o.rot}) scale(${k.toFixed(3)})">${glyph(o)}</g>`;
+      h += `<g class="glyph" transform="translate(${f(sc[0])} ${f(sc[1])}) rotate(${o.rot + view.rot}) scale(${k.toFixed(3)})">${glyph(o)}</g>`;
     }
-    const along = sz.w >= sz.d, runPx = (along ? sz.w : sz.d) * k * (isRect(o) ? 1 : 0.6), crossPx = (along ? sz.d : sz.w) * k * (isRect(o) ? 1 : 0.6);
-    const tr = rotAt(upright(o.rot + (along ? 0 : 90)), c);
-    const fits = (text, cw) => text.length * cw + 10 < runPx;
-    const name = { cls: 'o-name', text: esc(o.name), cw: 7.4 };
-    const dims = { cls: 'o-dim', text: `${fmt(sz.w)} × ${fmt(sz.d)} m`, cw: 6.4 };
-    const area = { cls: 'o-dim', text: `${fmt(objArea(o).toFixed(1))} m²`, cw: 6.4 };
-    // drop lines from the end until the rest fits inside the shape
-    let lines = (kind === 'room' ? [name, area, dims] : kind === 'furn' ? [] : kind === 'plot' ? [name, dims, area] : [])
-      .filter(l => fits(l.text, l.cw));
-    if (!lines.includes(name)) { lines = []; }
-    while (lines.length && lines.length * 17 + 6 > crossPx) { lines.pop(); }
+    const scale = k * (isRect(o) ? 1 : 0.6);
+    const name = { cls: 'o-name', raw: o.name, text: esc(o.name) };
+    const dims = { cls: 'o-dim', raw: `${fmt(sz.w)} × ${fmt(sz.d)} m` };
+    const area = { cls: 'o-dim', raw: `${fmt(objArea(o).toFixed(1))} m²` };
+    dims.text = dims.raw;
+    area.text = area.raw;
+    const wanted = kind === 'room' ? [name, area, dims] : kind === 'plot' ? [name, dims, area] : [];
+    // lines that fit when the text runs along one side of the shape; the rest are dropped from the end
+    const fitLines = (runPx, crossPx) => {
+      let out = wanted.filter(l => labelWidth(l) + 10 < runPx);
+      if (!out.includes(name)) { out = []; }
+      while (out.length && out.length * 17 + 6 > crossPx) { out.pop(); }
+      return out;
+    };
+    // prefer text that reads horizontally on screen, unless turning it shows more
+    const options = [
+      { ang: upright(o.rot + view.rot), lines: fitLines(sz.w * scale, sz.d * scale) },
+      { ang: upright(o.rot + view.rot + 90), lines: fitLines(sz.d * scale, sz.w * scale) },
+    ].sort((a, b) => Math.abs(a.ang) - Math.abs(b.ang));
+    const pick = options[1].lines.length > options[0].lines.length ? options[1] : options[0];
+    const lines = pick.lines, tr = rotAt(pick.ang, c);
     lines.forEach((l, i) => {
       const y = c[1] + (i - (lines.length - 1) / 2) * 17;
       h += `<text class="${l.cls}" x="${f(c[0])}" y="${f(y)}" ${tr}>${l.text}</text>`;
@@ -1582,7 +1631,7 @@ function render() {
     }
     for (let i = 0; i < n; i++) { h += edgeLabel(C, C[i], C[(i + 1) % n], 'wall-lbl', 13, `${dist(C[i], C[(i + 1) % n]).toFixed(2)} m`); }
 
-    const b = bbox(so.pts), uy = rotV([0, 1], so.rot);
+    const b = bbox(so.pts), uy = rotV([0, 1], so.rot + view.rot);
     const top = S(add([so.x, so.y], rotV([(b.x0 + b.x1) / 2, b.y0], so.rot))), rp = add(top, mul(uy, -30));
     if (!so.isBuilding) { h += `<line class="rot-line" x1="${f(top[0])}" y1="${f(top[1])}" x2="${f(rp[0])}" y2="${f(rp[1])}"/>`; }
     for (let i = 0; i < n; i++) {
@@ -1613,7 +1662,7 @@ function render() {
     if (d > 0) { h += `<text class="lbl m-lbl" x="${f(m[0])}" y="${f(m[1] - 12)}">${d.toFixed(2)} m</text>`; }
   }
 
-  h += `<g transform="translate(${W - 30} 36) rotate(${state.north - (rh ? rh.rot : 0)})"><path class="ov" d="M0 -16 L7 8 L0 3 L-7 8Z"/><text class="ov-text" y="24" transform="rotate(${-(state.north - (rh ? rh.rot : 0))} 0 20)">N</text></g>`;
+  h += `<g transform="translate(${W - 30} 36) rotate(${state.north})"><path class="ov" d="M0 -16 L7 8 L0 3 L-7 8Z"/><text class="ov-text" y="24" transform="rotate(${-state.north} 0 20)">N</text></g>`;
   const nice = [1, 2, 5, 10, 20, 50].find(m => m * k >= 70) || 50, bw = nice * k, bx = W - 22 - bw, by = H - 22;
   h += `<path class="ov-line" d="M${f(bx)} ${by - 5}V${by}H${f(bx + bw)}V${by - 5}"/><text class="ov-text" x="${f(bx + bw / 2)}" y="${by - 8}">${nice} M</text>`;
 
@@ -1829,8 +1878,9 @@ svg.addEventListener('pointermove', e => {
     if (pointers.size < 2) { return; }
     const [a, b] = [...pointers.values()], m = mul(add(a, b), 0.5);
     view.k = clamp(d.k0 * dist(a, b) / d.d0, 2, 250);
-    view.tx = m[0] - d.w0[0] * view.k;
-    view.ty = m[1] - d.w0[1] * view.k;
+    const at = mul(rotV(d.w0, view.rot), view.k);
+    view.tx = m[0] - at[0];
+    view.ty = m[1] - at[1];
   } else if (d.kind === 'pan') {
     view.tx = d.t0[0] + p[0] - d.s[0];
     view.ty = d.t0[1] + p[1] - d.s[1];
@@ -1909,7 +1959,8 @@ function addObject(preset) {
   let c = toWorld([W / 2, H / 2]);
   if (!pointInPoly(c, area)) { c = centroid(area); }
   const list = items(), last = list[list.length - 1];
-  const rot = h ? 0 : last ? last.rot : nearestQuarter(edgeAngle(longestEdge(state.plot)), 0);
+  // inside a building new pieces stay square to its walls and as level as possible on screen
+  const rot = h ? nearestQuarter(0, -view.rot) : last ? last.rot : nearestQuarter(edgeAngle(longestEdge(state.plot)), 0);
   const w = preset.w || T.w, d = h && (T.kind === 'door' || T.kind === 'window') ? wallOf(h) : preset.d || T.d;
   mutate(() => {
     const o = {
@@ -2056,7 +2107,8 @@ window.addEventListener('keydown', e => {
   if (moves[key]) {
     e.preventDefault();
     if (blocked()) { return; }
-    mutate(() => { o.x = r3(o.x + moves[key][0]); o.y = r3(o.y + moves[key][1]); });
+    const mv = rotV(moves[key], -view.rot);
+    mutate(() => { o.x = r3(o.x + mv[0]); o.y = r3(o.y + mv[1]); });
   } else if (key === 'delete' || key === 'backspace') {
     e.preventDefault();
     remove();
