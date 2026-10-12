@@ -238,8 +238,17 @@ kbd { font: 11.5px var(--f-mono); border: 1px solid var(--rule); border-bottom-w
 .tab small { font: 12px var(--f-mono); text-transform: none; letter-spacing: 0; color: var(--muted); }
 .tab input { font: inherit; text-transform: none; width: 14ch; padding: 1px 4px; border: 1px solid var(--accent); border-radius: 4px; background: var(--paper); }
 .tab-x { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 2px; font: 600 15px/1 var(--f-body); }
-.tab-x:hover, .tab-x.armed { color: var(--bad); }
-.tab-x.armed { font: 600 12px var(--f-display); letter-spacing: .06em; }
+.tab-x:hover { color: var(--bad); }
+.dialog {
+  width: min(420px, calc(100vw - 32px)); padding: 20px; border: 1px solid var(--rule); border-radius: 10px;
+  background: var(--panel); color: var(--ink); box-shadow: 0 12px 40px rgba(0, 0, 0, .3);
+}
+.dialog::backdrop { background: rgba(15, 20, 20, .5); }
+.dialog h2 { margin: 0 0 8px; font: 700 22px/1.15 var(--f-display); letter-spacing: .02em; text-transform: uppercase; text-wrap: balance; }
+.dialog p { margin: 0 0 18px; color: var(--muted); }
+.dialog p b { color: var(--ink); }
+.dialog .row-btns { justify-content: flex-end; }
+.btn.danger-fill { background: var(--bad); border-color: var(--bad); color: #fff; }
 .tab-add {
   flex: none; padding: 7px 10px; border: 1px dashed var(--rule); border-top: 0; border-radius: 0 0 6px 6px; background: none; cursor: pointer;
   color: var(--muted); font: 600 13px var(--f-display); letter-spacing: .06em; text-transform: uppercase;
@@ -402,6 +411,17 @@ button.person { cursor: pointer; }
     </section>
   </aside>
 </div>
+
+<dialog class="dialog" id="confirm" aria-labelledby="confirm-title">
+  <form method="dialog">
+    <h2 id="confirm-title"></h2>
+    <p id="confirm-text"></p>
+    <div class="row-btns">
+      <button class="btn" value="cancel" autofocus>Keep it</button>
+      <button class="btn danger-fill" value="ok" id="confirm-ok"></button>
+    </div>
+  </form>
+</dialog>
 
 <script>
 (() => {
@@ -1260,25 +1280,25 @@ $('#io-load').addEventListener('click', () => {
   $('#io').hidden = true;
   ioMsg('Plan loaded.');
 });
-let resetArmed = null;
-$('#a-reset').addEventListener('click', e => {
-  const b = e.currentTarget;
+$('#a-reset').addEventListener('click', () => {
   if (blocked()) { return; }
-  if (!resetArmed) {
-    b.textContent = 'Click again to reset';
-    resetArmed = setTimeout(() => { b.textContent = 'Reset this page'; resetArmed = null; }, 3000);
-    return;
-  }
-  clearTimeout(resetArmed);
-  resetArmed = null;
-  b.textContent = 'Reset this page';
-  const ex = exampleState();
-  rotateState(ex, state.north - ex.north);
-  mutate(() => { cur().objects = ex.pages[0].objects; ui.sel = null; });
+  const page = cur();
+  confirmAction({
+    title: `Reset “${page.name}”?`,
+    html: `${shapeSummary(page)} They are replaced with the example layout: a house, carport, terrace and driveway.`,
+    ok: 'Reset page',
+    run: () => {
+      const p = state.pages.find(x => x.id === page.id);
+      if (!p || pageLock()) { return; }
+      const ex = exampleState();
+      rotateState(ex, state.north - ex.north);
+      mutate(() => { p.objects = ex.pages[0].objects; ui.sel = null; });
+    },
+  });
 });
 
 window.addEventListener('keydown', e => {
-  if (e.target.closest('input, textarea, select')) { return; }
+  if (e.target.closest('input, textarea, select, dialog')) { return; }
   const ctrl = e.ctrlKey || e.metaKey, key = e.key.toLowerCase();
   if (ctrl && key === 'z' && !e.shiftKey) { e.preventDefault(); restore(undoStack, redoStack); return; }
   if (ctrl && (key === 'y' || (key === 'z' && e.shiftKey))) { e.preventDefault(); restore(redoStack, undoStack); return; }
@@ -1306,7 +1326,6 @@ window.addEventListener('keydown', e => {
 });
 
 // pages (tabs under the plan)
-let delArmed = null;
 function uniquePageName(base) {
   const names = new Set(state.pages.map(p => p.name));
   if (!names.has(base)) { return base; }
@@ -1324,16 +1343,58 @@ function addPage(copy) {
     setPage(p.id);
   });
 }
+// confirmation for actions that throw work away; "Keep it" is the default button
+function confirmAction({ title, html, ok, run }) {
+  $('#confirm-title').textContent = title;
+  $('#confirm-text').innerHTML = html;
+  $('#confirm-ok').textContent = ok || '';
+  $('#confirm-ok').hidden = !ok;
+  ui.confirmRun = run;
+  $('#confirm').showModal();
+}
+$('#confirm form').addEventListener('submit', e => {
+  const run = ui.confirmRun;
+  ui.confirmRun = null;
+  if (run && e.submitter && e.submitter.value === 'ok') { run(); }
+});
+function shapeSummary(page) {
+  const n = page.objects.length;
+  if (!n) { return 'The page is empty.'; }
+  const list = page.objects.slice(0, 4).map(o => esc(o.name)).join(', ') + (n > 4 ? ` and ${n - 4} more` : '');
+  return `It has ${n} shape${n > 1 ? 's' : ''}: ${list}.`;
+}
+function askDeletePage(id) {
+  const page = state.pages.find(p => p.id === id);
+  if (!page || state.pages.length < 2) { return; }
+  const here = others().filter(p => p.page === id).map(p => p.name || 'Someone');
+  if (here.length) {
+    confirmAction({ title: `Delete “${page.name}”?`, html: `<b>${esc(here.join(' and '))}</b> ${here.length > 1 ? 'are' : 'is'} on this page right now, so it can't be deleted.` });
+    return;
+  }
+  confirmAction({
+    title: `Delete “${page.name}”?`,
+    html: `${shapeSummary(page)} It disappears for everyone who uses this plan.`,
+    ok: 'Delete page',
+    run: () => {
+      const i = state.pages.findIndex(x => x.id === id);
+      if (i < 0 || state.pages.length < 2) { return; }
+      mutate(() => {
+        state.pages.splice(i, 1);
+        setPage(state.pages[Math.max(0, i - 1)].id);
+      });
+    },
+  });
+}
 function renderTabs() {
   if (ui.renaming) { return; }
   const c = cur();
   $('#tabs').innerHTML = state.pages.map(p => {
-    const on = p === c, built = p.objects.filter(o => o.building).reduce((sum, o) => sum + objArea(o), 0);
+    const on = p === c;
     const del = on && state.pages.length > 1
-      ? `<button type="button" class="tab-x${delArmed === p.id ? ' armed' : ''}" data-del="${esc(p.id)}" aria-label="Delete this page" title="Delete this page">${delArmed === p.id ? 'Delete?' : '×'}</button>`
+      ? `<button type="button" class="tab-x" data-del="${esc(p.id)}" aria-label="Delete this page" title="Delete this page">×</button>`
       : '';
     const who = others().filter(x => x.page === p.id).map(x => `<i class="tab-who" title="${esc(x.name || 'Someone')} is on this page">${esc((x.name || '?')[0].toUpperCase())}</i>`).join('');
-    return `<div class="tab${on ? ' on' : ''}" role="tab" tabindex="0" aria-selected="${on}" data-page="${esc(p.id)}" title="Double-click to rename">${who}<span class="tab-name">${esc(p.name)}</span><small>${fmtA(built)} m²</small>${del}</div>`;
+    return `<div class="tab${on ? ' on' : ''}" role="tab" tabindex="0" aria-selected="${on}" data-page="${esc(p.id)}" title="Double-click to rename">${who}<span class="tab-name">${esc(p.name)}</span>${del}</div>`;
   }).join('') +
     '<button type="button" class="tab-add" data-add="new" title="Add an empty page">+ New</button>' +
     '<button type="button" class="tab-add" data-add="copy" title="Copy this page to try a variation">Duplicate</button>';
@@ -1365,19 +1426,7 @@ function startRename(id) {
 $('#tabs').addEventListener('click', e => {
   const del = e.target.closest('[data-del]'), add = e.target.closest('[data-add]'), tab = e.target.closest('[data-page]');
   if (del) {
-    const id = del.dataset.del;
-    if (delArmed !== id) {
-      delArmed = id;
-      setTimeout(() => { if (delArmed === id) { delArmed = null; renderTabs(); } }, 3000);
-      renderTabs();
-      return;
-    }
-    delArmed = null;
-    mutate(() => {
-      const i = state.pages.findIndex(p => p.id === id);
-      state.pages.splice(i, 1);
-      setPage(state.pages[Math.max(0, i - 1)].id);
-    });
+    askDeletePage(del.dataset.del);
   } else if (add) {
     addPage(add.dataset.add === 'copy');
   } else if (tab && tab.dataset.page !== cur().id && !ui.renaming) {
@@ -1407,11 +1456,12 @@ const FIREBASE_CONFIG = {
 };
 const FIREBASE_SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
 const CLOUD_KEY = 'plot-planner.cloud-id', ME_KEY = 'plot-planner.me', NAME_KEY = 'plot-planner.name';
-const ONLINE_MS = 50000, IDLE_MS = 180000, BEAT_MS = 20000;
+// background tabs may only send a sign of life once a minute, so "online" allows for that
+const ONLINE_MS = 75000, IDLE_MS = 180000, BEAT_MS = 15000;
 // base = what is stored online; the plan document holds the shared part, each page's shapes have their own document
 const cloud = {
   api: null, db: null, ref: null, id: null, timer: null, loaded: false, waiting: false,
-  base: { main: null, pages: {} }, dirtyMain: false, dirtyPages: new Set(), people: {},
+  base: { main: null, pages: {} }, dirtyMain: false, dirtyPages: new Set(), people: {}, clockOffset: 0,
 };
 const me = { id: '', name: '', pageSince: Date.now(), active: Date.now() };
 try {
@@ -1505,15 +1555,17 @@ function rebuild() {
   render();
 }
 
+// presence times come from the server clock, so devices with wrong clocks still agree
+const serverNow = () => Date.now() + cloud.clockOffset;
 function others() {
-  const now = Date.now();
+  const now = serverNow();
   return Object.values(cloud.people).filter(p => p.id !== me.id && now - p.seen < ONLINE_MS);
 }
 // the first person on a page holds it while they are active; the others can only look
 function pageLock() {
   if (!cloud.ref) { return null; }
-  const page = cur().id, now = Date.now();
-  return others().find(p => p.page === page && now - p.active < IDLE_MS
+  const page = cur().id, now = serverNow();
+  return others().find(p => p.page === page && p.idle + (now - p.seen) < IDLE_MS
     && (p.pageSince < me.pageSince || (p.pageSince === me.pageSince && p.id < me.id))) || null;
 }
 function blocked() {
@@ -1538,8 +1590,18 @@ function claimPage() {
 }
 function beat() {
   if (!cloud.ref) { return; }
-  cloud.api.setDoc(presenceRef(me.id), { name: me.name, page: cur().id, pageSince: me.pageSince, active: me.active, seen: Date.now() })
+  me.lastBeat = Date.now();
+  // "active" is how long ago this person last touched anything
+  cloud.api.setDoc(presenceRef(me.id), { name: me.name, page: cur().id, pageSince: me.pageSince, active: Date.now() - me.active, seen: cloud.api.serverTimestamp() })
     .catch(() => { /* shown by the plan status instead */ });
+}
+// a closing page cannot wait for the SDK, so the "I left" message goes out as a beacon
+function leave() {
+  const { projectId, apiKey } = FIREBASE_CONFIG, root = `projects/${projectId}/databases/(default)/documents`;
+  const body = JSON.stringify({ writes: [{ delete: `${root}/plans/${cloud.id}/presence/${me.id}` }] });
+  try {
+    navigator.sendBeacon(`https://firestore.googleapis.com/v1/${root}:commit?key=${apiKey}`, new Blob([body], { type: 'text/plain' }));
+  } catch (e) { /* best effort */ }
 }
 ['pointerdown', 'keydown', 'input'].forEach(t => window.addEventListener(t, () => { me.active = Date.now(); }, true));
 
@@ -1660,19 +1722,26 @@ async function startCloud() {
       }
     }, onError));
 
-    keepListening(onError => fs.onSnapshot(fs.collection(cloud.db, 'plans', id, 'presence'), snap => {
+    keepListening(onError => fs.onSnapshot(fs.collection(cloud.db, 'plans', id, 'presence'), { includeMetadataChanges: true }, snap => {
       cloud.people = {};
-      snap.forEach(d => { cloud.people[d.id] = { id: d.id, ...d.data() }; });
+      snap.forEach(d => {
+        const v = d.data({ serverTimestamps: 'estimate' });
+        const seen = v.seen && v.seen.toMillis ? v.seen.toMillis() : +v.seen || 0;
+        if (d.id === me.id && !d.metadata.hasPendingWrites && me.lastBeat) { cloud.clockOffset = seen - me.lastBeat; }
+        cloud.people[d.id] = { id: d.id, name: v.name, page: v.page, pageSince: v.pageSince, idle: +v.active || 0, seen };
+      });
       render();
     }, onError));
 
     beat();
     setInterval(beat, BEAT_MS);
-    setInterval(render, 10000);
+    setInterval(render, 5000);
     window.addEventListener('pagehide', () => {
       if (cloud.timer) { upload(); }
-      fs.deleteDoc(presenceRef(me.id)).catch(() => { /* best effort */ });
+      leave();
     });
+    window.addEventListener('pageshow', e => { if (e.persisted) { beat(); } });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { beat(); } });
     if (!me.name) { render(); editName(); }
   } catch (e) {
     setSync('Online saving failed to start', 'err');
