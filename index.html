@@ -248,6 +248,31 @@ kbd { font: 11.5px var(--f-mono); border: 1px solid var(--rule); border-bottom-w
 .sync { font: 600 12px var(--f-display); letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--rule); color: var(--muted); }
 .sync.ok { color: var(--ok); }
 .sync.err { color: var(--bad); }
+.people { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.person {
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 2px 7px; border: 1px solid var(--rule); border-radius: 12px;
+  background: var(--panel); color: var(--ink); font: 600 13px var(--f-display); letter-spacing: .04em;
+}
+.person i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; }
+.person.me i { background: var(--accent); }
+.person small { font: 400 12px var(--f-body); letter-spacing: 0; color: var(--muted); }
+button.person { cursor: pointer; }
+.person input { font: inherit; width: 14ch; padding: 0 4px; border: 1px solid var(--accent); border-radius: 4px; background: var(--paper); }
+.tab-who {
+  display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; flex: none;
+  background: var(--ok); color: var(--paper); font: 700 11px var(--f-display); font-style: normal;
+}
+.lockbar {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 20px);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 12px; border-radius: 8px;
+  background: var(--panel); border: 1px solid var(--warn); box-shadow: 0 2px 12px rgba(0, 0, 0, .15); font-size: 14px;
+}
+.lockbar .btn { font-size: 13px; min-height: 30px; padding: 4px 10px; }
+.app.locked .presets, .app.locked #sel-sec .row-btns, .app.locked #a-reset { opacity: .45; pointer-events: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .lockbar.flash { animation: lockflash .5s; }
+  @keyframes lockflash { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--warn) 45%, transparent); } }
+}
 
 @media (max-width: 860px) {
   html, body { height: auto; }
@@ -269,6 +294,7 @@ kbd { font: 11.5px var(--f-mono); border: 1px solid var(--rule); border-bottom-w
       <h1>Plot Planner</h1>
       <span class="sub" id="brand-sub">Site plan · 1 square = 1 m</span>
       <span class="sync" id="sync" hidden></span>
+      <div class="people" id="people" hidden></div>
     </div>
     <div class="tools" role="toolbar" aria-label="Tools">
       <button class="btn" data-tool="select" aria-pressed="true" title="Move, resize and rotate shapes (V)">Move</button>
@@ -288,6 +314,7 @@ kbd { font: 11.5px var(--f-mono); border: 1px solid var(--rule); border-bottom-w
   <main class="stage" id="stage">
     <svg id="cv" role="img" aria-label="Site plan drawn to scale"></svg>
     <div class="hint" id="hint"></div>
+    <div class="lockbar" id="lockbar" role="status" hidden></div>
   </main>
   <nav class="tabbar" id="tabs" role="tablist" aria-label="Plan pages"></nav>
 
@@ -657,7 +684,9 @@ function setPage(id) {
   ui.page = id;
   ui.sel = null;
   ui.measure = null;
+  me.pageSince = Date.now();
   try { localStorage.setItem(PAGE_KEY, id); } catch (e) { /* storage blocked */ }
+  beat();
 }
 
 function exampleState() {
@@ -718,6 +747,7 @@ function commit(prev) {
   undoStack.push(prev);
   if (undoStack.length > 150) { undoStack.shift(); }
   redoStack.length = 0;
+  claimPage();
   save();
 }
 function keepPageValid() {
@@ -725,9 +755,13 @@ function keepPageValid() {
   if (!selObj()) { ui.sel = null; }
 }
 function restore(from, to) {
-  if (!from.length) { return; }
+  if (!from.length || blocked()) { return; }
   to.push(snapshot());
+  const live = new Map(state.pages.map(p => [p.id, p.objects])), busy = new Set(others().map(p => p.page));
   state = JSON.parse(from.pop());
+  for (const p of state.pages) {
+    if (busy.has(p.id) && live.has(p.id)) { p.objects = live.get(p.id); }
+  }
   keepPageValid();
   save();
   render();
@@ -893,6 +927,7 @@ function render() {
   svg.setAttribute('class', 'tool-' + ui.tool);
   updatePanel(statuses);
   renderTabs();
+  renderPresence();
 }
 
 const STATUS_TEXT = { ok: 'Fits', warn: 'Too close', out: 'Outside' };
@@ -989,6 +1024,7 @@ function snapPoint(w) {
 function endDrag() {
   if (ui.drag && ui.drag.snap != null) { commit(ui.drag.snap); }
   ui.drag = null;
+  if (cloud.waiting) { rebuild(); }
   render();
 }
 
@@ -1006,14 +1042,14 @@ svg.addEventListener('pointerdown', e => {
   if (pointers.size > 2) { return; }
   const w = toWorld(p);
   const t = e.target.closest('[data-h],[data-v],[data-wall],[data-obj],[data-pv]');
-  const snap = snapshot();
+  const snap = snapshot(), locked = !!pageLock();
   if (ui.tool === 'measure') {
     const s = snapPoint(w);
     ui.measure = { a: s, b: s.slice() };
     ui.drag = { kind: 'measure' };
   } else if (ui.tool === 'plot' && t && t.dataset.pv != null) {
     ui.drag = { kind: 'pv', i: +t.dataset.pv, snap };
-  } else if (ui.tool === 'select' && t && (t.dataset.h || t.dataset.v != null || t.dataset.wall != null)) {
+  } else if (ui.tool === 'select' && t && !locked && (t.dataset.h || t.dataset.v != null || t.dataset.wall != null)) {
     const o = selObj();
     const kind = t.dataset.v != null ? 'vertex' : t.dataset.wall != null ? 'wall' : 'rot';
     const i = kind === 'vertex' ? +t.dataset.v : kind === 'wall' ? +t.dataset.wall : -1;
@@ -1028,7 +1064,8 @@ svg.addEventListener('pointerdown', e => {
   } else if (ui.tool === 'select' && t && t.dataset.obj) {
     ui.sel = t.dataset.obj;
     const o = selObj();
-    ui.drag = { kind: 'move', off: sub(w, [o.x, o.y]), snap };
+    if (locked) { blocked(); }
+    ui.drag = locked ? { kind: 'pan', s: p, t0: [view.tx, view.ty] } : { kind: 'move', off: sub(w, [o.x, o.y]), snap };
   } else {
     if (ui.tool === 'select') { ui.sel = null; }
     ui.drag = { kind: 'pan', s: p, t0: [view.tx, view.ty] };
@@ -1088,7 +1125,10 @@ function pointerEnd(e) {
   if (!pointers.has(e.pointerId)) { return; }
   pointers.delete(e.pointerId);
   if (ui.drag && ui.drag.kind === 'pinch') {
-    if (pointers.size < 2) { ui.drag = null; }
+    if (pointers.size < 2) {
+      ui.drag = null;
+      if (cloud.waiting) { rebuild(); }
+    }
     return;
   }
   endDrag();
@@ -1109,6 +1149,7 @@ function nextName(base) {
   return `${base} ${i}`;
 }
 function addObject(preset) {
+  if (blocked()) { return; }
   const T = TYPES[preset.type], [W, H] = stageSize();
   let c = toWorld([W / 2, H / 2]);
   if (!pointInPoly(c, state.plot)) { c = centroid(state.plot); }
@@ -1144,7 +1185,7 @@ function bindForm(form, apply) {
 }
 bindForm($('#sel-form'), el => {
   const o = selObj();
-  if (!o) { return; }
+  if (!o || blocked()) { return; }
   const v = parseFloat(el.value), sz = objSize(o);
   if (el.dataset.wall != null && v >= 0.3 && v <= 100) { setWallLength(o, +el.dataset.wall, v); }
   if (el.id === 'f-name') { o.name = el.value.slice(0, 40); }
@@ -1174,7 +1215,7 @@ function alignToEdge(o) {
   const e = edges(simplify(state.plot)).map(e => ({ e, d: polySegClosest(C, e[0], e[1]).d })).sort((x, y) => x.d - y.d)[0].e;
   o.rot = nearestQuarter(edgeAngle(e), o.rot);
 }
-const withSel = fn => () => { const o = selObj(); if (o) { mutate(() => fn(o)); } };
+const withSel = fn => () => { const o = selObj(); if (o && !blocked()) { mutate(() => fn(o)); } };
 const rotate90 = withSel(o => { o.rot = normAngle(o.rot + 90); });
 const duplicate = withSel(o => {
   const c = { ...clone(o), id: uid(), name: nextName(o.name.replace(/ \d+$/, '')), x: o.x + 1, y: o.y + 1 };
@@ -1212,6 +1253,7 @@ $('#io-load').addEventListener('click', () => {
   let s = null;
   try { s = normalize(JSON.parse($('#io-text').value)); } catch (e) { s = null; }
   if (!s) { ioMsg('That text is not a plan. Paste the full text you got from Copy plan.', true); return; }
+  if (others().length) { ioMsg('Someone else is online. Paste a plan when you are the only one here, so their work is not replaced.', true); return; }
   mutate(() => { state = s; ui.sel = null; keepPageValid(); });
   fit();
   render();
@@ -1221,6 +1263,7 @@ $('#io-load').addEventListener('click', () => {
 let resetArmed = null;
 $('#a-reset').addEventListener('click', e => {
   const b = e.currentTarget;
+  if (blocked()) { return; }
   if (!resetArmed) {
     b.textContent = 'Click again to reset';
     resetArmed = setTimeout(() => { b.textContent = 'Reset this page'; resetArmed = null; }, 3000);
@@ -1250,6 +1293,7 @@ window.addEventListener('keydown', e => {
   const moves = { arrowleft: [-step, 0], arrowright: [step, 0], arrowup: [0, -step], arrowdown: [0, step] };
   if (moves[key]) {
     e.preventDefault();
+    if (blocked()) { return; }
     mutate(() => { o.x = r3(o.x + moves[key][0]); o.y = r3(o.y + moves[key][1]); });
   } else if (key === 'delete' || key === 'backspace') {
     e.preventDefault();
@@ -1288,7 +1332,8 @@ function renderTabs() {
     const del = on && state.pages.length > 1
       ? `<button type="button" class="tab-x${delArmed === p.id ? ' armed' : ''}" data-del="${esc(p.id)}" aria-label="Delete this page" title="Delete this page">${delArmed === p.id ? 'Delete?' : '×'}</button>`
       : '';
-    return `<div class="tab${on ? ' on' : ''}" role="tab" tabindex="0" aria-selected="${on}" data-page="${esc(p.id)}" title="Double-click to rename"><span class="tab-name">${esc(p.name)}</span><small>${fmtA(built)} m²</small>${del}</div>`;
+    const who = others().filter(x => x.page === p.id).map(x => `<i class="tab-who" title="${esc(x.name || 'Someone')} is on this page">${esc((x.name || '?')[0].toUpperCase())}</i>`).join('');
+    return `<div class="tab${on ? ' on' : ''}" role="tab" tabindex="0" aria-selected="${on}" data-page="${esc(p.id)}" title="Double-click to rename">${who}<span class="tab-name">${esc(p.name)}</span><small>${fmtA(built)} m²</small>${del}</div>`;
   }).join('') +
     '<button type="button" class="tab-add" data-add="new" title="Add an empty page">+ New</button>' +
     '<button type="button" class="tab-add" data-add="copy" title="Copy this page to try a variation">Duplicate</button>';
@@ -1308,7 +1353,7 @@ function startRename(id) {
     ui.renaming = null;
     const v = input.value.trim().slice(0, 40), p = state.pages.find(x => x.id === id);
     if (ok && v && p && v !== p.name) { mutate(() => { p.name = v; }); } else { render(); }
-    applyWaitingRemote();
+    if (cloud.waiting) { rebuild(); }
   };
   input.addEventListener('keydown', e => {
     e.stopPropagation();
@@ -1361,47 +1406,195 @@ const FIREBASE_CONFIG = {
   appId: '1:306605115672:web:a1953e5066263e5fd9366d',
 };
 const FIREBASE_SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
-const CLOUD_KEY = 'plot-planner.cloud-id';
-const cloud = { api: null, ref: null, id: null, timer: null, dirty: false, lastSent: null, waiting: null };
+const CLOUD_KEY = 'plot-planner.cloud-id', ME_KEY = 'plot-planner.me', NAME_KEY = 'plot-planner.name';
+const ONLINE_MS = 50000, IDLE_MS = 180000, BEAT_MS = 20000;
+// base = what is stored online; the plan document holds the shared part, each page's shapes have their own document
+const cloud = {
+  api: null, db: null, ref: null, id: null, timer: null, loaded: false, waiting: false,
+  base: { main: null, pages: {} }, dirtyMain: false, dirtyPages: new Set(), people: {},
+};
+const me = { id: '', name: '', pageSince: Date.now(), active: Date.now() };
+try {
+  me.id = localStorage.getItem(ME_KEY) || '';
+  me.name = localStorage.getItem(NAME_KEY) || '';
+} catch (e) { /* storage blocked */ }
+if (!me.id) {
+  me.id = randomId();
+  try { localStorage.setItem(ME_KEY, me.id); } catch (e) { /* storage blocked */ }
+}
+
 function setSync(text, cls) {
   const el = $('#sync');
   el.hidden = false;
   el.textContent = text;
   el.className = 'sync' + (cls ? ' ' + cls : '');
 }
+function randomId() {
+  const bytes = crypto.getRandomValues(new Uint8Array(18));
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_');
+}
+function splitState(s) {
+  const pages = {};
+  for (const p of s.pages) { pages[p.id] = JSON.stringify(p.objects); }
+  return { main: JSON.stringify({ ...s, pages: s.pages.map(p => ({ id: p.id, name: p.name })) }), pages };
+}
+const parseJson = t => { try { return JSON.parse(t); } catch (e) { return null; } };
+const pageRef = id => cloud.api.doc(cloud.db, 'plans', cloud.id, 'pages', id);
+const presenceRef = id => cloud.api.doc(cloud.db, 'plans', cloud.id, 'presence', id);
+
+// pages listed online whose shapes have not arrived yet; they must not be overwritten with an empty page
+function notArrived() {
+  const pages = (parseJson(cloud.base.main) || {}).pages || [];
+  return new Set(pages.filter(p => !Array.isArray(p.objects) && cloud.base.pages[p.id] == null).map(p => p.id));
+}
 function scheduleUpload() {
-  if (!cloud.ref) { return; }
-  cloud.dirty = true;
+  if (!cloud.ref || !cloud.loaded) { return; }
+  const mine = splitState(state), missing = notArrived();
+  cloud.dirtyMain = mine.main !== cloud.base.main;
+  cloud.dirtyPages = new Set(Object.keys(mine.pages).filter(id => !missing.has(id) && mine.pages[id] !== cloud.base.pages[id]));
   clearTimeout(cloud.timer);
   setSync('Saving…');
   cloud.timer = setTimeout(upload, 700);
 }
 function upload() {
   clearTimeout(cloud.timer);
-  cloud.dirty = false;
-  const data = snapshot();
-  cloud.lastSent = data;
-  cloud.api.setDoc(cloud.ref, { data, updatedAt: cloud.api.serverTimestamp() })
-    .catch(() => setSync('Not saved online', 'err'));
+  cloud.timer = null;
+  if (!cloud.loaded) { return; }
+  const api = cloud.api, at = api.serverTimestamp(), mine = splitState(state), jobs = [], missing = notArrived();
+  const knownPages = ((parseJson(cloud.base.main) || {}).pages || []).map(p => p.id);
+  if (mine.main !== cloud.base.main) { jobs.push(api.setDoc(cloud.ref, { data: mine.main, updatedAt: at })); }
+  for (const [id, data] of Object.entries(mine.pages)) {
+    if (missing.has(id)) {
+      delete mine.pages[id];
+    } else if (data !== cloud.base.pages[id]) {
+      jobs.push(api.setDoc(pageRef(id), { data, updatedAt: at }));
+    }
+  }
+  // only pages this person deleted; pages someone else just added are not known locally yet
+  for (const id of knownPages) {
+    if (!(id in mine.pages)) {
+      jobs.push(api.deleteDoc(pageRef(id)));
+      delete cloud.base.pages[id];
+    }
+  }
+  cloud.base.main = mine.main;
+  Object.assign(cloud.base.pages, mine.pages);
+  cloud.dirtyMain = false;
+  cloud.dirtyPages = new Set();
+  Promise.all(jobs).then(() => { if (!cloud.timer) { setSync('Saved online', 'ok'); } }, () => setSync('Not saved online', 'err'));
 }
-function applyRemote(data) {
-  if (ui.drag || ui.renaming || cloud.dirty) { cloud.waiting = data; return; }
-  let s = null;
-  try { s = normalize(JSON.parse(data)); } catch (e) { s = null; }
+// rebuilds the plan from what is online, keeping local changes that are not uploaded yet
+function rebuild() {
+  if (!cloud.base.main) { return; }
+  if (ui.drag || ui.renaming) { cloud.waiting = true; return; }
+  cloud.waiting = false;
+  const shared = parseJson(cloud.dirtyMain ? splitState(state).main : cloud.base.main);
+  if (!shared || !Array.isArray(shared.pages)) { return; }
+  const local = new Map(state.pages.map(p => [p.id, p.objects]));
+  shared.pages = shared.pages.map(p => ({
+    id: p.id, name: p.name,
+    objects: (cloud.dirtyPages.has(p.id) && local.get(p.id))
+      || (cloud.base.pages[p.id] != null && parseJson(cloud.base.pages[p.id]))
+      || p.objects || local.get(p.id) || [],
+  }));
+  const s = normalize(shared);
   if (!s) { return; }
   state = s;
   keepPageValid();
   try { localStorage.setItem(KEY, snapshot()); } catch (e) { /* storage blocked */ }
   render();
 }
-function applyWaitingRemote() {
-  const data = cloud.waiting;
-  cloud.waiting = null;
-  if (data && !cloud.dirty) { applyRemote(data); }
+
+function others() {
+  const now = Date.now();
+  return Object.values(cloud.people).filter(p => p.id !== me.id && now - p.seen < ONLINE_MS);
 }
-function randomId() {
-  const bytes = crypto.getRandomValues(new Uint8Array(18));
-  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_');
+// the first person on a page holds it while they are active; the others can only look
+function pageLock() {
+  if (!cloud.ref) { return null; }
+  const page = cur().id, now = Date.now();
+  return others().find(p => p.page === page && now - p.active < IDLE_MS
+    && (p.pageSince < me.pageSince || (p.pageSince === me.pageSince && p.id < me.id))) || null;
+}
+function blocked() {
+  const lock = pageLock();
+  if (lock) {
+    const bar = $('#lockbar');
+    bar.classList.remove('flash');
+    void bar.offsetWidth;
+    bar.classList.add('flash');
+  }
+  return !!lock;
+}
+// editing a page whose holder went idle takes it over
+function claimPage() {
+  const rivals = others().filter(p => p.page === cur().id);
+  if (!rivals.length) { return; }
+  const first = Math.min(...rivals.map(p => p.pageSince));
+  if (me.pageSince >= first) {
+    me.pageSince = first - 1;
+    beat();
+  }
+}
+function beat() {
+  if (!cloud.ref) { return; }
+  cloud.api.setDoc(presenceRef(me.id), { name: me.name, page: cur().id, pageSince: me.pageSince, active: me.active, seen: Date.now() })
+    .catch(() => { /* shown by the plan status instead */ });
+}
+['pointerdown', 'keydown', 'input'].forEach(t => window.addEventListener(t, () => { me.active = Date.now(); }, true));
+
+let lockHtml = '';
+function renderPresence() {
+  const lock = pageLock();
+  document.querySelector('.app').classList.toggle('locked', !!lock);
+  for (const el of $('#sel-form').elements) { el.disabled = !!lock; }
+  const html = lock ? `<span><b>${esc(lock.name || 'Someone')}</b> is editing this page. You can look, or duplicate it to try your own idea.</span><button type="button" class="btn" data-lock="dup">Duplicate page</button>` : '';
+  if (html !== lockHtml) {
+    lockHtml = html;
+    $('#lockbar').innerHTML = html;
+    $('#lockbar').hidden = !lock;
+  }
+  const el = $('#people');
+  el.hidden = !cloud.ref;
+  if (!cloud.ref || ui.editingName) { return; }
+  const pageName = id => (state.pages.find(p => p.id === id) || {}).name || 'another page';
+  el.innerHTML = `<button type="button" class="person me" data-me="1" title="Change your name"><i></i>${me.name ? esc(me.name) : 'Set your name'}<small>you</small></button>` +
+    others().map(p => `<span class="person" title="Online now"><i></i>${esc(p.name || 'Someone')}<small>${esc(pageName(p.page))}</small></span>`).join('');
+}
+function editName() {
+  ui.editingName = true;
+  const btn = $('#people [data-me]');
+  btn.outerHTML = '<span class="person me"><i></i><input id="me-name" maxlength="40" placeholder="Your name" aria-label="Your name"></span>';
+  const input = $('#me-name');
+  input.value = me.name;
+  input.focus();
+  const finish = ok => {
+    if (!ui.editingName) { return; }
+    ui.editingName = false;
+    const v = input.value.trim().slice(0, 40);
+    if (ok && v) {
+      me.name = v;
+      try { localStorage.setItem(NAME_KEY, v); } catch (e) { /* storage blocked */ }
+      beat();
+    }
+    render();
+  };
+  input.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { finish(true); }
+    if (e.key === 'Escape') { finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+}
+$('#people').addEventListener('click', e => { if (e.target.closest('[data-me]')) { editName(); } });
+$('#lockbar').addEventListener('click', e => { if (e.target.closest('[data-lock]')) { addPage(true); } });
+
+// a listener stops for good after an error, so it is started again a bit later
+function keepListening(subscribe) {
+  subscribe(() => {
+    setSync('Reconnecting…', 'err');
+    setTimeout(() => keepListening(subscribe), 5000);
+  });
 }
 async function startCloud() {
   if (!FIREBASE_CONFIG || window.self !== window.top) { return; }
@@ -1409,11 +1602,10 @@ async function startCloud() {
   try {
     const [appSdk, fs] = await Promise.all([import(FIREBASE_SDK + 'firebase-app.js'), import(FIREBASE_SDK + 'firebase-firestore.js')]);
     const app = appSdk.initializeApp(FIREBASE_CONFIG);
-    let db;
     try {
-      db = fs.initializeFirestore(app, { localCache: fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager() }) });
+      cloud.db = fs.initializeFirestore(app, { localCache: fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager() }) });
     } catch (e) {
-      db = fs.getFirestore(app);
+      cloud.db = fs.getFirestore(app);
     }
     let id = (location.hash.match(/^#p=([A-Za-z0-9_-]{20,})$/) || [])[1];
     if (!id) { try { id = localStorage.getItem(CLOUD_KEY); } catch (e) { id = null; } }
@@ -1422,22 +1614,66 @@ async function startCloud() {
     history.replaceState(null, '', location.pathname + location.search + '#p=' + id);
     cloud.api = fs;
     cloud.id = id;
-    cloud.ref = fs.doc(db, 'plans', id);
+    cloud.ref = fs.doc(cloud.db, 'plans', id);
     $('#save-note').textContent = 'Saved online. Everyone with the share link sees and edits the same pages.';
-    fs.onSnapshot(cloud.ref, { includeMetadataChanges: true }, snap => {
+
+    keepListening(onError => fs.onSnapshot(fs.collection(cloud.db, 'plans', id, 'pages'), snap => {
+      let changed = false;
+      for (const ch of snap.docChanges()) {
+        if (ch.doc.metadata.hasPendingWrites) { continue; }
+        if (ch.type === 'removed') {
+          delete cloud.base.pages[ch.doc.id];
+          continue;
+        }
+        const data = ch.doc.data().data;
+        if (data !== cloud.base.pages[ch.doc.id]) {
+          cloud.base.pages[ch.doc.id] = data;
+          changed = true;
+        }
+      }
+      if (changed && cloud.loaded) { rebuild(); }
+    }, onError));
+
+    keepListening(onError => fs.onSnapshot(cloud.ref, { includeMetadataChanges: true }, snap => {
       if (snap.metadata.hasPendingWrites) { return; }
       if (!snap.exists()) {
-        if (!snap.metadata.fromCache) { upload(); }
+        if (!snap.metadata.fromCache && !cloud.loaded) {
+          cloud.loaded = true;
+          upload();
+        }
         return;
       }
-      const data = snap.data().data;
-      if (data !== cloud.lastSent && data !== snapshot()) { applyRemote(data); }
-      cloud.lastSent = data;
-      if (!cloud.dirty) {
+      const data = snap.data().data, first = !cloud.loaded;
+      cloud.loaded = true;
+      if (data !== cloud.base.main) {
+        cloud.base.main = data;
+        if (first) {
+          cloud.dirtyMain = false;
+          cloud.dirtyPages = new Set();
+        }
+        rebuild();
+        // plans saved before pages had their own documents are split up once
+        if (((parseJson(data) || {}).pages || []).some(p => Array.isArray(p.objects))) { scheduleUpload(); }
+      }
+      if (!cloud.timer) {
         if (snap.metadata.fromCache) { setSync('Offline · saved on this device'); } else { setSync('Saved online', 'ok'); }
       }
-    }, () => setSync('Cannot reach the online save', 'err'));
-    window.addEventListener('pagehide', () => { if (cloud.dirty) { upload(); } });
+    }, onError));
+
+    keepListening(onError => fs.onSnapshot(fs.collection(cloud.db, 'plans', id, 'presence'), snap => {
+      cloud.people = {};
+      snap.forEach(d => { cloud.people[d.id] = { id: d.id, ...d.data() }; });
+      render();
+    }, onError));
+
+    beat();
+    setInterval(beat, BEAT_MS);
+    setInterval(render, 10000);
+    window.addEventListener('pagehide', () => {
+      if (cloud.timer) { upload(); }
+      fs.deleteDoc(presenceRef(me.id)).catch(() => { /* best effort */ });
+    });
+    if (!me.name) { render(); editName(); }
   } catch (e) {
     setSync('Online saving failed to start', 'err');
   }
