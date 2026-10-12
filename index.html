@@ -32,6 +32,14 @@
   --c-driveway: #8d918b;
   --c-pool: #3f93b4;
   --c-custom: #786f62;
+  --floor: #f6f4ef;
+  --wall: #2e3436;
+  --room: rgba(61, 91, 109, .07);
+  --room-sw: #9fb3bf;
+  --furn: #e7e1d6;
+  --furn-line: #8b7f6b;
+  --furn-soft: #f4f0e8;
+  --furn-light: #fffdf8;
   --f-display: "Barlow Condensed", "Arial Narrow", sans-serif;
   --f-body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
@@ -44,6 +52,8 @@
     --ok: #5cbf83; --warn: #e0a83e; --bad: #f0675b;
     --c-house: #557c92; --c-carport: #977443; --c-garage: #686ca6; --c-shed: #64906d;
     --c-terrace: #9c7d4c; --c-driveway: #6e736e; --c-pool: #3b88a6; --c-custom: #7c7366;
+    --floor: #1d2322; --wall: #c5ccc7; --room: rgba(150, 185, 205, .08); --room-sw: #5d7584;
+    --furn: #3a3631; --furn-line: #a99b82; --furn-soft: #4a453e; --furn-light: #5c564d;
     color-scheme: dark;
   }
 }
@@ -54,6 +64,8 @@
   --ok: #5cbf83; --warn: #e0a83e; --bad: #f0675b;
   --c-house: #557c92; --c-carport: #977443; --c-garage: #686ca6; --c-shed: #64906d;
   --c-terrace: #9c7d4c; --c-driveway: #6e736e; --c-pool: #3b88a6; --c-custom: #7c7366;
+    --floor: #1d2322; --wall: #c5ccc7; --room: rgba(150, 185, 205, .08); --room-sw: #5d7584;
+    --furn: #3a3631; --furn-line: #a99b82; --furn-soft: #4a453e; --furn-light: #5c564d;
   color-scheme: dark;
 }
 
@@ -186,6 +198,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .preset b { font: 600 14px var(--f-display); letter-spacing: .04em; text-transform: uppercase; display: block; }
 .preset small { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .sw { width: 14px; height: 14px; border-radius: 3px; background: var(--c); flex: none; }
+.ico { flex: none; display: block; overflow: visible; }
+.item .ico, .item .sw { justify-self: center; }
 
 .fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .field { display: grid; gap: 3px; min-width: 0; }
@@ -208,7 +222,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .list { display: grid; gap: 4px; }
 .item {
-  display: grid; grid-template-columns: 14px minmax(0, 1fr) auto auto; align-items: center; gap: 8px;
+  display: grid; grid-template-columns: 20px minmax(0, 1fr) auto auto; align-items: center; gap: 8px; justify-items: start;
   padding: 6px 8px; border: 1px solid transparent; border-radius: 6px; background: none; cursor: pointer; text-align: left; width: 100%;
 }
 .item:hover { background: var(--paper); }
@@ -254,6 +268,43 @@ kbd { font: 11.5px var(--f-mono); border: 1px solid var(--rule); border-bottom-w
   color: var(--muted); font: 600 13px var(--f-display); letter-spacing: .06em; text-transform: uppercase;
 }
 .tab-add:hover { color: var(--ink); border-color: var(--muted); }
+/* room planner */
+.floor { fill: var(--floor); }
+.wallband { fill: var(--wall); pointer-events: none; }
+.inner-lbl { fill: var(--muted); font-size: 11.5px; }
+.obj.k-room polygon { fill: var(--room); stroke: none; fill-opacity: 1; }
+.room-wall { fill: none; stroke: var(--wall); stroke-linecap: square; pointer-events: none; }
+.obj.k-furn polygon { fill: transparent; stroke: none; }
+.obj.k-furn.st-out polygon { stroke: var(--bad); stroke-width: 2; }
+.obj.k-door polygon { fill: var(--floor); stroke: none; fill-opacity: 1; }
+.obj.k-window polygon { fill: var(--paper); stroke: var(--wall); stroke-width: 1; fill-opacity: 1; }
+.obj.sel.k-room polygon, .obj.sel.k-furn polygon, .obj.sel.k-door polygon, .obj.sel.k-window polygon { stroke: var(--accent); stroke-width: 2.5; }
+.obj.k-room text, .obj.k-furn text { fill: var(--ink); }
+.obj.k-furn .o-name { font-size: 11px; letter-spacing: .03em; }
+.glyph { stroke: var(--furn-line); pointer-events: none; }
+.glyph * { vector-effect: non-scaling-stroke; stroke-width: 1; fill: var(--furn-soft); }
+.glyph line, .glyph .g-line, .glyph .swing { fill: none; }
+.glyph .g-base { fill: var(--furn); }
+.glyph .g-soft { fill: var(--furn-soft); }
+.glyph .g-light { fill: var(--furn-light); }
+.glyph .g-dark { fill: var(--furn-line); }
+.glyph .g-faint { stroke-opacity: .35; }
+.glyph .leaf { stroke: var(--wall); stroke-width: 2; }
+.glyph .swing { stroke: var(--wall); stroke-dasharray: 3 3; fill: none; }
+.glyph .pane { stroke: var(--wall); }
+.k-room { --c: var(--room-sw); }
+.k-furn { --c: var(--furn-line); }
+.k-door, .k-window { --c: var(--wall); }
+#presets { display: grid; gap: 6px; }
+.preset-h { margin: 6px 0 0; font: 600 12px var(--f-display); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.ctxmenu {
+  position: absolute; z-index: 5; min-width: 200px; padding: 4px; display: grid;
+  background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+}
+.ctxmenu button { text-align: left; padding: 7px 10px; border: 0; border-radius: 5px; background: none; cursor: pointer; font: 500 14px var(--f-body); color: var(--ink); }
+.ctxmenu button:hover, .ctxmenu button:focus-visible { background: var(--accent-soft); outline: none; }
+.ctxmenu button.danger { color: var(--bad); }
+.app.room-mode .plot-only, .app:not(.room-mode) .room-only { display: none !important; }
 .sync { font: 600 12px var(--f-display); letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--rule); color: var(--muted); }
 .sync.ok { color: var(--ok); }
 .sync.err { color: var(--bad); }
@@ -306,9 +357,10 @@ button.person { cursor: pointer; }
       <div class="people" id="people" hidden></div>
     </div>
     <div class="tools" role="toolbar" aria-label="Tools">
+      <button class="btn primary room-only" id="b-back" title="Back to the site plan">← Back to plot</button>
       <button class="btn" data-tool="select" aria-pressed="true" title="Move, resize and rotate shapes (V)">Move</button>
       <button class="btn" data-tool="measure" aria-pressed="false" title="Measure between two points (M)">Measure</button>
-      <button class="btn" data-tool="plot" aria-pressed="false" title="Drag the plot corners (P)">Edit plot</button>
+      <button class="btn plot-only" data-tool="plot" aria-pressed="false" title="Drag the plot corners (P)">Edit plot</button>
       <span class="sep"></span>
       <button class="btn" id="b-undo" title="Undo (Ctrl+Z)">Undo</button>
       <button class="btn" id="b-redo" title="Redo (Ctrl+Y)">Redo</button>
@@ -316,7 +368,7 @@ button.person { cursor: pointer; }
       <button class="btn icon" id="b-zout" title="Zoom out" aria-label="Zoom out">−</button>
       <button class="btn icon" id="b-zin" title="Zoom in" aria-label="Zoom in">+</button>
       <button class="btn" id="b-fit" title="Fit the plot to the screen">Fit</button>
-      <button class="btn" id="b-turn" title="Turn the whole plan by 90°">Turn 90°</button>
+      <button class="btn plot-only" id="b-turn" title="Turn the whole plan by 90°">Turn 90°</button>
     </div>
   </header>
 
@@ -324,11 +376,22 @@ button.person { cursor: pointer; }
     <svg id="cv" role="img" aria-label="Site plan drawn to scale"></svg>
     <div class="hint" id="hint"></div>
     <div class="lockbar" id="lockbar" role="status" hidden></div>
+    <div class="ctxmenu" id="ctxmenu" role="menu" hidden></div>
   </main>
   <nav class="tabbar" id="tabs" role="tablist" aria-label="Plan pages"></nav>
 
   <aside class="panel">
-    <section>
+    <section class="room-only">
+      <h2>Building</h2>
+      <dl class="stats">
+        <div><dt>Floor area</dt><dd id="r-floor">–</dd></div>
+        <div><dt>Rooms</dt><dd id="r-rooms">–</dd></div>
+        <div><dt>Outside rooms</dt><dd id="r-free">–</dd></div>
+        <div><dt>Footprint</dt><dd id="r-foot">–</dd></div>
+      </dl>
+      <p class="warnline" id="r-warn" hidden></p>
+    </section>
+    <section class="plot-only">
       <h2>Summary</h2>
       <p class="note example" id="ex-note">Example layout. Drag, resize or delete anything. Your changes are saved automatically.</p>
       <dl class="stats">
@@ -347,8 +410,8 @@ button.person { cursor: pointer; }
     </section>
 
     <section>
-      <h2>Add to plan</h2>
-      <div class="presets" id="presets"></div>
+      <h2 id="add-title">Add to plan</h2>
+      <div id="presets"></div>
     </section>
 
     <section id="sel-sec" hidden>
@@ -359,11 +422,12 @@ button.person { cursor: pointer; }
         <div class="field"><label for="f-w">Outer width</label><input id="f-w" type="number" step="0.1" min="0.3" max="100" inputmode="decimal"></div>
         <div class="field"><label for="f-d">Outer depth</label><input id="f-d" type="number" step="0.1" min="0.3" max="100" inputmode="decimal"></div>
         <div class="field"><label for="f-rot">Angle, °</label><input id="f-rot" type="number" step="0.5" inputmode="decimal"></div>
-        <label class="check field wide"><input id="f-bld" type="checkbox"> Counts as a building (coverage and setback)</label>
+        <label class="check field wide plot-only"><input id="f-bld" type="checkbox"> Counts as a building (coverage and setback)</label>
         <div class="walls" id="walls"></div>
       </form>
       <p id="f-status"></p>
       <div class="row-btns">
+        <button class="btn primary plot-only" id="a-rooms" hidden title="Plan rooms, doors, windows and furniture">Open room planner</button>
         <button class="btn" id="a-align" title="Turn it parallel to the nearest plot edge">Align to edge</button>
         <button class="btn" id="a-rot" title="Rotate 90° (R)">Rotate 90°</button>
         <button class="btn" id="a-dup" title="Duplicate (D)">Duplicate</button>
@@ -372,20 +436,22 @@ button.person { cursor: pointer; }
     </section>
 
     <section>
-      <h2>On this page</h2>
+      <h2 id="list-title">On this page</h2>
       <div class="list" id="list"></div>
     </section>
 
     <section>
       <h2>Rules &amp; display</h2>
       <form id="set-form" class="fields" autocomplete="off">
-        <div class="field half"><label for="o-setback">Distance to border, m</label><input id="o-setback" type="number" step="0.5" min="0" max="20" inputmode="decimal"></div>
-        <div class="field"><label for="o-area">Official m²</label><input id="o-area" type="number" step="1" min="0" inputmode="numeric"></div>
+        <div class="field half plot-only"><label for="o-setback">Distance to border, m</label><input id="o-setback" type="number" step="0.5" min="0" max="20" inputmode="decimal"></div>
+        <div class="field half room-only"><label for="o-wall">Outer walls, m</label><input id="o-wall" type="number" step="0.05" min="0.05" max="1" inputmode="decimal"></div>
+        <div class="field plot-only"><label for="o-area">Official m²</label><input id="o-area" type="number" step="1" min="0" inputmode="numeric"></div>
         <label class="check field wide"><input id="o-grid" type="checkbox"> Show 1 m grid</label>
         <label class="check field wide"><input id="o-dims" type="checkbox"> Show distances for the selected shape</label>
       </form>
-      <p class="note">The dashed red line shows the minimum distance from buildings to the plot border. In Lithuania 3 m is the usual minimum without your neighbour's consent, but check your detailed plan. Coverage (užstatymo tankumas) is calculated from the official area.</p>
-      <div class="row-btns"><button class="btn" id="a-resetplot">Reset plot shape</button></div>
+      <p class="note room-only">Outer walls are drawn inside the building outline, so the floor area is the space you can actually use. Inner walls between rooms are drawn 12 cm thick.</p>
+      <p class="note plot-only">The dashed red line shows the minimum distance from buildings to the plot border. In Lithuania 3 m is the usual minimum without your neighbour's consent, but check your detailed plan. Coverage (užstatymo tankumas) is calculated from the official area.</p>
+      <div class="row-btns plot-only"><button class="btn" id="a-resetplot">Reset plot shape</button></div>
     </section>
 
     <section>
@@ -395,7 +461,7 @@ button.person { cursor: pointer; }
         <button class="btn primary" id="a-link" hidden>Copy share link</button>
         <button class="btn" id="a-copy">Copy plan</button>
         <button class="btn" id="a-import">Paste plan</button>
-        <button class="btn danger" id="a-reset">Reset this page</button>
+        <button class="btn danger plot-only" id="a-reset">Reset this page</button>
       </div>
       <div id="io" hidden>
         <textarea id="io-text" aria-label="Plan text"></textarea>
@@ -407,6 +473,7 @@ button.person { cursor: pointer; }
         <li><kbd>R</kbd> rotate 90°, <kbd>D</kbd> duplicate, <kbd>Del</kbd> delete</li>
         <li><kbd>Shift</kbd> while rotating turns off snapping</li>
         <li>Double-click a wall handle to add corners, a corner to remove it</li>
+        <li>Right-click (or double-click) a house to plan its rooms</li>
       </ul>
     </section>
   </aside>
@@ -443,6 +510,43 @@ const PRESETS = [
   { type: 'house', label: 'House', note: '12 × 10 m' },
   { type: 'house', label: 'L-shaped house', note: '14 × 12 m', shape: 'L' },
   ...['carport', 'garage', 'shed', 'terrace', 'driveway', 'parking', 'pool', 'custom'].map(t => ({ type: t, label: TYPES[t].label, note: `${TYPES[t].w} × ${TYPES[t].d} m` })),
+];
+const ROOM_TYPES = {
+  room: { label: 'Room', w: 4, d: 3.5, kind: 'room' },
+  door: { label: 'Door', w: 0.8, d: 0.4, kind: 'door' },
+  window: { label: 'Window', w: 1.2, d: 0.4, kind: 'window' },
+  sofa: { label: 'Sofa', w: 2.28, d: 0.95, kind: 'furn', glyph: 'sofa' },
+  armchair: { label: 'Armchair', w: 0.85, d: 0.85, kind: 'furn', glyph: 'sofa' },
+  coffee: { label: 'Coffee table', w: 0.9, d: 0.55, kind: 'furn', glyph: 'table' },
+  dining: { label: 'Dining table', w: 1.4, d: 0.85, kind: 'furn', glyph: 'table' },
+  chair: { label: 'Chair', w: 0.45, d: 0.5, kind: 'furn', glyph: 'chair' },
+  bed2: { label: 'Double bed', w: 1.7, d: 2.1, kind: 'furn', glyph: 'bed2' },
+  bed1: { label: 'Single bed', w: 1, d: 2.1, kind: 'furn', glyph: 'bed1' },
+  wardrobe: { label: 'Wardrobe', w: 1, d: 0.6, kind: 'furn', glyph: 'wardrobe' },
+  desk: { label: 'Desk', w: 1.2, d: 0.6, kind: 'furn', glyph: 'desk' },
+  tv: { label: 'TV unit', w: 1.8, d: 0.42, kind: 'furn', glyph: 'tv' },
+  counter: { label: 'Kitchen counter', w: 2.4, d: 0.6, kind: 'furn', glyph: 'counter' },
+  fridge: { label: 'Fridge', w: 0.6, d: 0.65, kind: 'furn', glyph: 'fridge' },
+  toilet: { label: 'Wall-hung toilet', w: 0.38, d: 0.55, kind: 'furn', glyph: 'toilet' },
+  basin: { label: 'Washbasin', w: 0.6, d: 0.45, kind: 'furn', glyph: 'basin' },
+  shower: { label: 'Shower', w: 0.9, d: 0.9, kind: 'furn', glyph: 'shower' },
+  bath: { label: 'Bathtub', w: 1.7, d: 0.75, kind: 'furn', glyph: 'bath' },
+  washer: { label: 'Washing machine', w: 0.6, d: 0.6, kind: 'furn', glyph: 'washer' },
+};
+Object.assign(TYPES, ROOM_TYPES);
+const kindOf = o => (TYPES[o.type] || {}).kind || 'plot';
+const ROOM_HOSTS = ['house', 'garage', 'shed'];
+const ROOM_PRESETS = [
+  ...[['Living room', 5.5, 4.5], ['Kitchen', 3.5, 3], ['Bedroom', 4, 3.5], ['Bathroom', 2.5, 2.2], ['Hall', 2, 3.5], ['Office', 3, 3], ['Utility room', 2.5, 2], ['Storage', 1.5, 2]]
+    .map(([label, w, d]) => ({ group: 'Rooms', type: 'room', label, w, d })),
+  { group: 'Doors & windows', type: 'door', label: 'Room door', w: 0.8 },
+  { group: 'Doors & windows', type: 'door', label: 'Bathroom door', w: 0.7 },
+  { group: 'Doors & windows', type: 'door', label: 'Front door', w: 0.9 },
+  { group: 'Doors & windows', type: 'window', label: 'Small window', w: 0.6 },
+  { group: 'Doors & windows', type: 'window', label: 'Window', w: 1.2 },
+  { group: 'Doors & windows', type: 'window', label: 'Large window', w: 2.4 },
+  ...['sofa', 'armchair', 'coffee', 'dining', 'chair', 'bed2', 'bed1', 'wardrobe', 'desk', 'tv', 'counter', 'fridge', 'toilet', 'basin', 'shower', 'bath', 'washer']
+    .map(t => ({ group: 'Furniture', type: t, label: ROOM_TYPES[t].label })),
 ];
 const KEY = 'plot-planner.v1';
 
@@ -560,6 +664,12 @@ const isRect = o => o.pts.length === 4 && Math.abs(objArea(o) - objSize(o).w * o
 function recenter(o) {
   const b = bbox(o.pts), c = [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2];
   o.pts = r3(o.pts.map(p => sub(p, c)));
+  if (o.interior) {
+    for (const it of o.interior.items) {
+      it.x = r3(it.x - c[0]);
+      it.y = r3(it.y - c[1]);
+    }
+  }
   const wc = add([o.x, o.y], rotV(c, o.rot));
   o.x = r3(wc[0]);
   o.y = r3(wc[1]);
@@ -632,7 +742,7 @@ function nearestQuarter(base, target) {
   return normAngle(+best.toFixed(2));
 }
 function snapAngle(a) {
-  for (const base of [0, ...edges(simplify(state.plot)).map(edgeAngle)]) {
+  for (const base of [0, ...edges(simplify(outline())).map(edgeAngle)]) {
     const c = nearestQuarter(base, a);
     if (Math.abs(normAngle(a - c)) < 3) { return c; }
   }
@@ -684,6 +794,13 @@ function unionArea(objs) {
 }
 
 function objStatus(o) {
+  if (ui.room && host()) {
+    if (isOpening(o)) { return { level: 'ok', minD: 0 }; }
+    const C = corners(o), P = innerOutline();
+    const wallDist = p => Math.min(...edges(P).map(([a, b]) => dist(p, segClosest(p, a, b))));
+    if (C.some(p => !pointInPoly(p, P) && wallDist(p) > 0.01)) { return { level: 'out', minD: 0 }; }
+    return { level: 'ok', minD: Math.min(...edges(P).map(([a, b]) => polySegClosest(C, a, b).d)) };
+  }
   const C = corners(o), P = state.plot;
   const boundaryDist = p => Math.min(...edges(P).map(([a, b]) => dist(p, segClosest(p, a, b))));
   if (C.some(p => !pointInPoly(p, P) && boundaryDist(p) > 0.01)) { return { level: 'out', minD: 0 }; }
@@ -695,7 +812,7 @@ function objStatus(o) {
 // state: the plot and the rules are shared, each page holds its own shapes
 let state;
 const view = { k: 10, tx: 0, ty: 0, fitted: false };
-const ui = { tool: 'select', sel: null, measure: null, drag: null, formSnap: null, hiWall: null, lastTap: {}, page: null, renaming: null };
+const ui = { room: null, press: null, tool: 'select', sel: null, measure: null, drag: null, formSnap: null, hiWall: null, lastTap: {}, page: null, renaming: null };
 const undoStack = [], redoStack = [];
 const PAGE_KEY = 'plot-planner.page';
 
@@ -705,6 +822,11 @@ function setPage(id) {
   ui.sel = null;
   ui.measure = null;
   me.pageSince = Date.now();
+  if (ui.room) {
+    ui.room = null;
+    applyMode();
+    fit();
+  }
   try { localStorage.setItem(PAGE_KEY, id); } catch (e) { /* storage blocked */ }
   beat();
 }
@@ -730,10 +852,16 @@ function normalizeObjects(list) {
     const pts = Array.isArray(o.pts) && o.pts.length >= 3
       ? o.pts.map(p => [num(p[0], 0), num(p[1], 0)])
       : rectPts(clamp(num(o.w, 4), 0.3, 100), clamp(num(o.d, 4), 0.3, 100));
-    return {
+    const out = {
       id: String(o.id || uid()), type: o.type, name: String(o.name || TYPES[o.type].label).slice(0, 40),
       x: num(o.x, 0), y: num(o.y, 0), rot: normAngle(num(o.rot, 0)), building: !!o.building, pts,
     };
+    if (o.mirror) { out.mirror = true; }
+    if (o.out) { out.out = true; }
+    if (o.interior && Array.isArray(o.interior.items)) {
+      out.interior = { wall: clamp(num(o.interior.wall, 0.4), 0.05, 1), items: normalizeObjects(o.interior.items) };
+    }
+    return out;
   });
 }
 function normalize(s) {
@@ -772,6 +900,11 @@ function commit(prev) {
 }
 function keepPageValid() {
   if (!state.pages.some(p => p.id === ui.page)) { setPage(state.pages[0].id); }
+  if (ui.room && !host()) {
+    ui.room = null;
+    applyMode();
+    fit();
+  }
   if (!selObj()) { ui.sel = null; }
 }
 function restore(from, to) {
@@ -786,7 +919,7 @@ function restore(from, to) {
   save();
   render();
 }
-const selObj = () => cur().objects.find(o => o.id === ui.sel) || null;
+const selObj = () => items().find(o => o.id === ui.sel) || null;
 function mutate(fn) {
   const prev = snapshot();
   fn();
@@ -799,7 +932,7 @@ const stageSize = () => [svg.clientWidth, svg.clientHeight];
 function fit() {
   const [W, H] = stageSize();
   if (!W || !H) { return; }
-  const b = bbox(state.plot), pad = Math.min(56, Math.min(W, H) * 0.12);
+  const b = bbox(outline()), pad = Math.min(56, Math.min(W, H) * 0.12);
   view.k = Math.min((W - 2 * pad) / (b.w || 1), (H - 2 * pad) / (b.h || 1));
   view.tx = W / 2 - (b.x0 + b.x1) / 2 * view.k;
   view.ty = H / 2 - (b.y0 + b.y1) / 2 * view.k;
@@ -815,6 +948,296 @@ function zoomAt(p, f) {
 }
 const toWorld = p => [(p[0] - view.tx) / view.k, (p[1] - view.ty) / view.k];
 function evPt(e) { const r = svg.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
+
+// room planner: the building is shown straight; its rooms and furniture use the building's own coordinates
+const host = () => (ui.room && cur().objects.find(o => o.id === ui.room)) || null;
+const items = () => { const h = host(); return h ? (h.interior ? h.interior.items : []) : cur().objects; };
+function ensureInterior(h) {
+  if (!h.interior) { h.interior = { wall: 0.4, items: [] }; }
+  return h.interior;
+}
+function setItems(list) {
+  const h = host();
+  if (h) { ensureInterior(h).items = list; } else { cur().objects = list; }
+}
+function pushItem(o) {
+  const h = host();
+  (h ? ensureInterior(h).items : cur().objects).push(o);
+}
+const wallOf = h => (h.interior ? h.interior.wall : 0.4);
+const outline = () => { const h = host(); return h ? h.pts : state.plot; };
+const innerOutline = () => { const h = host(); return h ? (inset(h.pts, wallOf(h)) || h.pts) : state.plot; };
+const canHaveRooms = o => ROOM_HOSTS.includes(o.type);
+const isOpening = o => ['door', 'window'].includes(kindOf(o));
+
+function openRoomPlanner(id) {
+  const o = cur().objects.find(x => x.id === id);
+  if (!o || !canHaveRooms(o)) { return; }
+  ui.room = id;
+  ui.sel = null;
+  ui.measure = null;
+  ui.drag = null;
+  applyMode();
+  fit();
+  setTool(ui.tool === 'plot' ? 'select' : ui.tool);
+}
+function closeRoomPlanner() {
+  const id = ui.room;
+  ui.room = null;
+  ui.sel = id;
+  ui.measure = null;
+  applyMode();
+  fit();
+  setTool(ui.tool);
+}
+function applyMode() {
+  const h = host();
+  document.querySelector('.app').classList.toggle('room-mode', !!h);
+  $('#brand-sub').textContent = h ? `Room planner · ${h.name}` : 'Site plan · 1 square = 1 m';
+  $('#add-title').textContent = h ? 'Add to the building' : 'Add to plan';
+  $('#list-title').textContent = h ? 'In this building' : 'On this page';
+  renderPresets();
+  $('#f-type').innerHTML = Object.entries(TYPES).filter(([, t]) => !!t.kind === !!h).map(([k, t]) => `<option value="${k}">${t.label}</option>`).join('');
+}
+
+let presetList = PRESETS;
+function presetNote(p) {
+  const T = TYPES[p.type];
+  if (p.note) { return p.note; }
+  if (T.kind === 'door' || T.kind === 'window') { return `${fmt(p.w || T.w)} m wide`; }
+  return `${fmt(p.w || T.w)} × ${fmt(p.d || T.d)} m`;
+}
+function renderPresets() {
+  presetList = host() ? ROOM_PRESETS : PRESETS;
+  const groups = [...new Set(presetList.map(p => p.group || ''))];
+  $('#presets').innerHTML = groups.map(g => (g ? `<p class="preset-h">${g}</p>` : '') + '<div class="presets">' +
+    presetList.map((p, i) => [p, i]).filter(([p]) => (p.group || '') === g).map(([p, i]) =>
+      `<button type="button" class="preset t-${p.type} k-${TYPES[p.type].kind || 'plot'}" data-preset="${i}">${pieceIcon(p.type, p.w, p.d, 30) || '<span class="sw"></span>'}<span><b>${esc(p.label)}</b><small>${presetNote(p)}</small></span></button>`).join('') +
+    '</div>').join('');
+}
+
+// doors and windows sit on the middle line of an outer wall, or on the edge of a room
+function snapOpening(o, p, force) {
+  const h = host(), t = wallOf(h), w = objSize(o).w;
+  const mid = inset(h.pts, t / 2) || h.pts;
+  const segs = edges(mid).map(([a, b]) => ({ a, b, depth: t, n: inwardNormal(mid, a, b) }));
+  for (const r of items()) {
+    if (kindOf(r) !== 'room') { continue; }
+    const C = corners(r);
+    for (const [a, b] of edges(C)) { segs.push({ a, b, depth: 0.12, n: inwardNormal(C, a, b) }); }
+  }
+  let best = null;
+  for (const s of segs) {
+    const L = dist(s.a, s.b);
+    if (L < w) { continue; }
+    const u = mul(sub(s.b, s.a), 1 / L), along = clamp(rnd(dot(sub(p, s.a), u), 0.05), w / 2, L - w / 2);
+    const q = add(s.a, mul(u, along)), dd = dist(p, q);
+    if (!best || dd < best.dd) { best = { dd, q, s }; }
+  }
+  if (!best || (!force && best.dd > 0.7)) {
+    o.x = r3(rnd(p[0], 0.05));
+    o.y = r3(rnd(p[1], 0.05));
+    return;
+  }
+  // the door opens towards the inside of the house or room unless it was flipped
+  const base = deg(Math.atan2(best.s.n[1], best.s.n[0])) - 90;
+  o.rot = normAngle(o.out ? base + 180 : base);
+  o.pts = rectPts(w, best.s.depth);
+  o.x = r3(best.q[0]);
+  o.y = r3(best.q[1]);
+}
+
+// the parts of a room's edges that are real inner walls; edges lying on an outer wall are left out
+function innerWalls(C, floor) {
+  const out = [];
+  for (const [a, b] of edges(C)) {
+    const ab = sub(b, a), L2 = dot(ab, ab);
+    if (L2 < 1e-6) { continue; }
+    const n = norm([-ab[1], ab[0]]);
+    let parts = [[0, 1]];
+    for (const [p, q] of edges(floor)) {
+      if (Math.abs(dot(sub(p, a), n)) > 0.03 || Math.abs(dot(sub(q, a), n)) > 0.03) { continue; }
+      const t1 = dot(sub(p, a), ab) / L2, t2 = dot(sub(q, a), ab) / L2, lo = Math.min(t1, t2), hi = Math.max(t1, t2);
+      parts = parts.flatMap(([s, e]) => (hi <= s || lo >= e ? [[s, e]] : [[s, lo], [hi, e]].filter(([x, y]) => y - x > 1e-3)));
+    }
+    for (const [s, e] of parts) { out.push([add(a, mul(ab, s)), add(a, mul(ab, e))]); }
+  }
+  return out;
+}
+
+// rooms line up with the outer walls and with each other; furniture with the inner face of room walls
+function snapToWalls(o) {
+  if (Math.abs(normAngle(o.rot - rnd(o.rot, 90))) > 0.01) { return; }
+  const tol = Math.max(0.12, 8 / view.k), b = bbox(corners(o)), xs = [], ys = [], face = kindOf(o) === 'furn' ? 0.06 : 0;
+  for (const p of innerOutline()) {
+    xs.push(p[0]);
+    ys.push(p[1]);
+  }
+  for (const r of items()) {
+    if (r === o || kindOf(r) !== 'room') { continue; }
+    const rb = bbox(corners(r));
+    xs.push(rb.x0 + face, rb.x1 - face);
+    ys.push(rb.y0 + face, rb.y1 - face);
+  }
+  const nearest = (lines, sides) => {
+    let best = null;
+    for (const side of sides) {
+      for (const v of lines) {
+        if (Math.abs(v - side) < tol && (best === null || Math.abs(v - side) < Math.abs(best))) { best = v - side; }
+      }
+    }
+    return best;
+  };
+  const dx = nearest(xs, [b.x0, b.x1]), dy = nearest(ys, [b.y0, b.y1]);
+  if (dx !== null) { o.x = r3(o.x + dx); }
+  if (dy !== null) { o.y = r3(o.y + dy); }
+}
+
+// small drawings in the shape's own metres, so they turn and zoom with it
+function glyph(o) {
+  const T = TYPES[o.type], b = bbox(o.pts), w = b.w, d = b.h, x0 = b.x0, y0 = b.y0, x1 = b.x1, y1 = b.y1, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  const n = v => +v.toFixed(3);
+  const R = (x, y, ww, hh, rx, cls) => `<rect class="${cls}" x="${n(x)}" y="${n(y)}" width="${n(Math.max(0.01, ww))}" height="${n(Math.max(0.01, hh))}" rx="${n(Math.max(0, Math.min(rx, ww / 2, hh / 2)))}"/>`;
+  const E = (ex, ey, rx, ry, cls) => `<ellipse class="${cls}" cx="${n(ex)}" cy="${n(ey)}" rx="${n(Math.max(0.01, rx))}" ry="${n(Math.max(0.01, ry))}"/>`;
+  const C = (ex, ey, r, cls) => `<circle class="${cls}" cx="${n(ex)}" cy="${n(ey)}" r="${n(r)}"/>`;
+  const L = (ax, ay, bx, by, cls = '') => `<line${cls ? ` class="${cls}"` : ''} x1="${n(ax)}" y1="${n(ay)}" x2="${n(bx)}" y2="${n(by)}"/>`;
+  // the back of each piece is at the top of its own frame (smaller y)
+  const seating = cushions => {
+    const back = Math.min(0.2, d * 0.25), arm = Math.min(0.16, w * 0.18), iw = w - 2 * arm - 0.04, gap = 0.03;
+    const cw = (iw - (cushions - 1) * gap) / cushions;
+    let out = R(x0, y0, w, d, 0.1, 'g-base') + R(x0 + 0.03, y0 + 0.03, w - 0.06, back, 0.08, 'g-soft') +
+      R(x0 + 0.02, y0 + 0.08, arm, d - 0.1, 0.07, 'g-soft') + R(x1 - 0.02 - arm, y0 + 0.08, arm, d - 0.1, 0.07, 'g-soft');
+    for (let i = 0; i < cushions; i++) { out += R(x0 + arm + 0.02 + i * (cw + gap), y0 + back + 0.05, cw, d - back - 0.09, 0.07, 'g-light'); }
+    return out;
+  };
+  const bed = pillows => {
+    const pw = (w - 0.14 - (pillows - 1) * 0.06) / pillows;
+    let out = R(x0, y0, w, d, 0.05, 'g-base') + R(x0, y0, w, 0.07, 0.03, 'g-dark');
+    for (let i = 0; i < pillows; i++) { out += R(x0 + 0.07 + i * (pw + 0.06), y0 + 0.12, pw, 0.3, 0.08, 'g-light'); }
+    // duvet with the top folded back and one corner turned down
+    const fy = y0 + 0.66, t = Math.min(0.4, w * 0.3, d - 0.75);
+    return out + R(x0 + 0.03, y0 + 0.5, w - 0.06, d - 0.53, 0.05, 'g-soft') + R(x0 + 0.03, y0 + 0.5, w - 0.06, 0.16, 0.04, 'g-light') +
+      `<path class="g-light" d="M${n(x1 - 0.03 - t)} ${n(fy)}L${n(x1 - 0.03)} ${n(fy)}L${n(x1 - 0.03)} ${n(fy + t)}Z"/>`;
+  };
+  switch (T.glyph || T.kind) {
+    case 'sofa': return seating(w < 1.2 ? 1 : w < 2.6 ? 2 : 3);
+    case 'chair':
+      // rounded seat with a curved backrest
+      return R(x0 + 0.03, y0 + 0.07, w - 0.06, d - 0.08, 0.09, 'g-soft') + R(x0 + 0.08, y0 + 0.15, w - 0.16, d - 0.22, 0.06, 'g-light') +
+        `<path class="g-dark" d="M${n(x0)} ${n(y0 + 0.12)}Q${n(cx)} ${n(y0 - 0.05)} ${n(x1)} ${n(y0 + 0.12)}L${n(x1 - 0.04)} ${n(y0 + 0.15)}Q${n(cx)} ${n(y0 + 0.03)} ${n(x0 + 0.04)} ${n(y0 + 0.15)}Z"/>`;
+    case 'bed2': return bed(2);
+    case 'bed1': return bed(1);
+    case 'table': return R(x0, y0, w, d, 0.06, 'g-base') + R(x0 + 0.06, y0 + 0.06, w - 0.12, d - 0.12, 0.04, 'g-line');
+    case 'desk':
+      return R(x0, y0, w, d, 0.03, 'g-base') + R(cx - Math.min(0.3, w * 0.3), y0 + 0.07, Math.min(0.6, w * 0.6), 0.04, 0.01, 'g-dark') +
+        R(cx - 0.2, y0 + d * 0.45, 0.4, 0.13, 0.02, 'g-light');
+    case 'tv': return R(x0, y0, w, d, 0.03, 'g-base') + R(cx - w * 0.36, y0 + 0.05, w * 0.72, 0.05, 0.01, 'g-dark');
+    case 'wardrobe': {
+      let out = R(x0, y0, w, d, 0.02, 'g-base') + L(x0 + 0.05, cy, x1 - 0.05, cy) + L(x0, y1 - 0.04, x1, y1 - 0.04);
+      for (let x = x0 + 0.12; x < x1 - 0.08; x += 0.12) { out += L(x, cy - d * 0.3, x + 0.04, cy + d * 0.3); }
+      return out;
+    }
+    case 'counter': {
+      const sw = Math.min(0.55, w * 0.3);
+      let out = R(x0, y0, w, d, 0.02, 'g-base') + R(x0 + 0.15, y0 + 0.08, sw, d - 0.18, 0.05, 'g-light') + C(x0 + 0.15 + sw / 2, cy, 0.03, 'g-dark');
+      if (w > 1.2) {
+        for (const hx of [x1 - 0.45, x1 - 0.2]) { for (const hy of [cy - 0.12, cy + 0.12]) { out += C(hx, hy, 0.08, 'g-line'); } }
+      }
+      return out;
+    }
+    case 'fridge': return R(x0, y0, w, d, 0.03, 'g-base') + L(x0, y1 - 0.06, x1, y1 - 0.06) + R(x1 - 0.14, y1 - 0.06, 0.09, 0.035, 0.01, 'g-dark');
+    case 'toilet': {
+      // wall-hung: flush plate on the wall, bowl coming straight out of it, no tank
+      const top = y0 + 0.04, side = top + (d - 0.04) * 0.35;
+      return R(cx - Math.min(0.13, w * 0.35), y0, Math.min(0.26, w * 0.7), 0.04, 0.01, 'g-dark') +
+        `<path class="g-light" d="M${n(x0 + 0.02)} ${n(top)}L${n(x1 - 0.02)} ${n(top)}L${n(x1 - 0.02)} ${n(side)}Q${n(x1 - 0.02)} ${n(y1)} ${n(cx)} ${n(y1)}Q${n(x0 + 0.02)} ${n(y1)} ${n(x0 + 0.02)} ${n(side)}Z"/>` +
+        E(cx, top + (d - 0.04) * 0.58, w / 2 - 0.08, (d - 0.04) * 0.3, 'g-line');
+    }
+    case 'basin': return R(x0, y0, w, d, 0.06, 'g-base') + E(cx, cy + 0.02, w / 2 - 0.08, d / 2 - 0.09, 'g-light') + C(cx, y0 + 0.06, 0.025, 'g-dark');
+    case 'shower':
+      return R(x0, y0, w, d, 0.03, 'g-light') + R(x0 + 0.05, y0 + 0.05, w - 0.1, d - 0.1, 0.02, 'g-line') +
+        L(x0 + 0.05, y0 + 0.05, x1 - 0.05, y1 - 0.05, 'g-faint') + L(x1 - 0.05, y0 + 0.05, x0 + 0.05, y1 - 0.05, 'g-faint') + C(cx, cy, 0.045, 'g-dark');
+    case 'bath':
+      return R(x0, y0, w, d, 0.1, 'g-base') + R(x0 + 0.07, y0 + 0.07, w - 0.14, d - 0.14, Math.min(0.3, (d - 0.14) / 2), 'g-light') + C(x0 + 0.2, cy, 0.035, 'g-dark');
+    case 'washer': {
+      const r = Math.min(w, d) * 0.3;
+      return R(x0, y0, w, d, 0.04, 'g-base') + L(x0 + 0.06, y0 + 0.08, x1 - 0.06, y0 + 0.08) + C(cx, cy + 0.04, r, 'g-light') + C(cx, cy + 0.04, r * 0.62, 'g-line');
+    }
+    case 'door': {
+      // hinge on the inner side; "mirror" moves it to the other end
+      const hx = o.mirror ? x1 : x0, ex = o.mirror ? x0 : x1;
+      return L(hx, y1, hx, y1 + w, 'leaf') + `<path class="swing" d="M${n(hx)} ${n(y1 + w)} A${n(w)} ${n(w)} 0 0 ${o.mirror ? 1 : 0} ${n(ex)} ${n(y1)}"/>`;
+    }
+    case 'window': return L(x0, y0 + d * 0.35, x1, y0 + d * 0.35, 'pane') + L(x0, y0 + d * 0.65, x1, y0 + d * 0.65, 'pane');
+    default: return R(x0, y0, w, d, 0.04, 'g-base');
+  }
+}
+
+// small picture of a piece for the side panel
+function pieceIcon(type, w, d, size) {
+  const T = TYPES[type];
+  if (!T || !['furn', 'door', 'window'].includes(T.kind)) { return ''; }
+  const o = { type, x: 0, y: 0, rot: 0, pts: rectPts(w || T.w, d || T.d) }, b = bbox(o.pts);
+  let body = glyph(o), y1 = b.y1;
+  if (T.kind === 'door') {
+    body = `<rect class="g-base" x="${b.x0 - 0.25}" y="${b.y0}" width="0.25" height="${b.h}"/><rect class="g-base" x="${b.x1}" y="${b.y0}" width="0.25" height="${b.h}"/>` + body;
+    y1 = b.y1 + b.w;
+  }
+  if (T.kind === 'window') { body = `<rect class="g-light" x="${b.x0}" y="${b.y0}" width="${b.w}" height="${b.h}"/>` + body; }
+  const pad = 0.06, x0 = b.x0 - (T.kind === 'door' ? 0.25 : 0) - pad, wv = b.x1 - b.x0 + (T.kind === 'door' ? 0.5 : 0) + 2 * pad, hv = y1 - b.y0 + 2 * pad;
+  const side = Math.max(wv, hv);
+  return `<svg class="ico glyph" width="${size}" height="${size}" viewBox="${(x0 - (side - wv) / 2).toFixed(3)} ${(b.y0 - pad - (side - hv) / 2).toFixed(3)} ${side.toFixed(3)} ${side.toFixed(3)}" aria-hidden="true">${body}</svg>`;
+}
+
+// right-click (or press and hold) menu
+const menu = $('#ctxmenu');
+function openMenu(p, id) {
+  ui.sel = id;
+  if (ui.tool !== 'select') { setTool('select'); } else { render(); }
+  const o = selObj();
+  if (!o) { return; }
+  const acts = [];
+  if (!host() && canHaveRooms(o)) { acts.push(['rooms', 'Open room planner']); }
+  if (isOpening(o)) {
+    acts.push(['flip', 'Flip to the other side']);
+    if (kindOf(o) === 'door') { acts.push(['mirror', 'Move hinge to the other end']); }
+  } else {
+    acts.push(['rot', 'Rotate 90°']);
+  }
+  acts.push(['dup', 'Duplicate'], ['del', 'Delete']);
+  menu.innerHTML = acts.map(([a, l]) => `<button type="button" role="menuitem" data-act="${a}"${a === 'del' ? ' class="danger"' : ''}>${l}</button>`).join('');
+  menu.hidden = false;
+  const [W, H] = stageSize();
+  menu.style.left = clamp(p[0], 4, W - menu.offsetWidth - 4) + 'px';
+  menu.style.top = clamp(p[1], 4, H - menu.offsetHeight - 4) + 'px';
+  menu.querySelector('button').focus();
+}
+function closeMenu() { menu.hidden = true; }
+svg.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const t = e.target.closest('[data-obj]');
+  if (t) { openMenu(evPt(e), t.dataset.obj); } else { closeMenu(); }
+});
+menu.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]');
+  if (!b) { return; }
+  closeMenu();
+  const a = b.dataset.act;
+  if (a === 'rooms') { openRoomPlanner(ui.sel); }
+  if (a === 'rot') { rotate90(); }
+  if (a === 'flip') { flipOpening(); }
+  if (a === 'mirror') { mirrorDoor(); }
+  if (a === 'dup') { duplicate(); }
+  if (a === 'del') { remove(); }
+});
+menu.addEventListener('keydown', e => {
+  const btns = [...menu.querySelectorAll('button')], i = btns.indexOf(document.activeElement);
+  if (e.key === 'Escape') { closeMenu(); }
+  if (e.key === 'ArrowDown') { e.preventDefault(); btns[(i + 1) % btns.length].focus(); }
+  if (e.key === 'ArrowUp') { e.preventDefault(); btns[(i - 1 + btns.length) % btns.length].focus(); }
+  e.stopPropagation();
+});
+document.addEventListener('pointerdown', e => { if (!menu.hidden && !menu.contains(e.target)) { closeMenu(); } }, true);
 
 // rendering
 function render() {
@@ -842,13 +1265,16 @@ function render() {
     h += `<path d="${minor}" class="grid"/><path d="${major}" class="grid major"/>`;
   }
 
-  h += `<polygon points="${pts(plot)}" class="land"/>`;
-  const inner = state.setback > 0 ? inset(plot, state.setback) : null;
-  if (inner) {
-    h += `<path d="M${pts(plot)}Z M${pts(inner)}Z" fill-rule="evenodd" class="setback"/>`;
-    h += `<polygon points="${pts(inner)}" class="setback-line"/>`;
+  const rh = host();
+  if (!rh) {
+    h += `<polygon points="${pts(plot)}" class="land"/>`;
+    const inner = state.setback > 0 ? inset(plot, state.setback) : null;
+    if (inner) {
+      h += `<path d="M${pts(plot)}Z M${pts(inner)}Z" fill-rule="evenodd" class="setback"/>`;
+      h += `<polygon points="${pts(inner)}" class="setback-line"/>`;
+    }
+    h += `<polygon points="${pts(plot)}" class="boundary"/>`;
   }
-  h += `<polygon points="${pts(plot)}" class="boundary"/>`;
 
   const edgeLabel = (P, a, b, cls, off, text) => {
     const sa = S(a), sb = S(b);
@@ -856,12 +1282,28 @@ function render() {
     const m = add(mul(add(sa, sb), 0.5), mul(inwardNormal(P, a, b), -off));
     return `<text class="lbl ${cls}" x="${f(m[0])}" y="${f(m[1])}" ${rotAt(upright(deg(Math.atan2(sb[1] - sa[1], sb[0] - sa[0]))), m)}>${text}</text>`;
   };
-  for (const [a, b] of edges(plot)) { h += edgeLabel(plot, a, b, 'edge-lbl', 14, `${dist(a, b).toFixed(1)} m`); }
+  if (rh) {
+    const outer = rh.pts, inner = innerOutline();
+    h += `<polygon points="${pts(inner)}" class="floor"/><path d="M${pts(outer)}Z M${pts(inner)}Z" fill-rule="evenodd" class="wallband"/>`;
+    for (const [a, b] of edges(outer)) { h += edgeLabel(outer, a, b, 'edge-lbl', 14, `${dist(a, b).toFixed(2)} m`); }
+    for (const [a, b] of edges(inner)) { h += edgeLabel(inner, a, b, 'inner-lbl', -12, `${dist(a, b).toFixed(2)} m`); }
+  } else {
+    for (const [a, b] of edges(plot)) { h += edgeLabel(plot, a, b, 'edge-lbl', 14, `${dist(a, b).toFixed(1)} m`); }
+  }
 
-  const statuses = new Map(cur().objects.map(o => [o.id, objStatus(o)]));
-  for (const o of cur().objects) {
-    const st = statuses.get(o.id), C = corners(o), c = S(polyCentroid(C)), sz = objSize(o);
-    h += `<g data-obj="${esc(o.id)}" class="obj t-${o.type} st-${st.level}${o.id === ui.sel ? ' sel' : ''}"><polygon points="${pts(C)}"/>`;
+  const LAYER = { room: 0, plot: 1, furn: 1, door: 2, window: 2 }, roomFloor = rh ? innerOutline() : null;
+  const statuses = new Map(items().map(o => [o.id, objStatus(o)]));
+  for (const o of items().slice().sort((a, b) => LAYER[kindOf(a)] - LAYER[kindOf(b)])) {
+    const st = statuses.get(o.id), C = corners(o), c = S(polyCentroid(C)), sz = objSize(o), kind = kindOf(o);
+    h += `<g data-obj="${esc(o.id)}" class="obj t-${o.type} k-${kind} st-${st.level}${o.id === ui.sel ? ' sel' : ''}"><polygon points="${pts(C)}"/>`;
+    if (kind === 'room') {
+      const d = innerWalls(C, roomFloor).map(([a, b]) => `M${S(a).map(f).join(' ')}L${S(b).map(f).join(' ')}`).join('');
+      if (d) { h += `<path class="room-wall" d="${d}" style="stroke-width:${Math.max(1.5, 0.12 * k).toFixed(1)}px"/>`; }
+    }
+    if (kind === 'furn' || kind === 'door' || kind === 'window') {
+      const sc = S([o.x, o.y]);
+      h += `<g class="glyph" transform="translate(${f(sc[0])} ${f(sc[1])}) rotate(${o.rot}) scale(${k.toFixed(3)})">${glyph(o)}</g>`;
+    }
     const along = sz.w >= sz.d, runPx = (along ? sz.w : sz.d) * k * (isRect(o) ? 1 : 0.6), crossPx = (along ? sz.d : sz.w) * k * (isRect(o) ? 1 : 0.6);
     const tr = rotAt(upright(o.rot + (along ? 0 : 90)), c);
     const fits = (text, cw) => text.length * cw + 10 < runPx;
@@ -869,7 +1311,8 @@ function render() {
     const dims = { cls: 'o-dim', text: `${fmt(sz.w)} × ${fmt(sz.d)} m`, cw: 6.4 };
     const area = { cls: 'o-dim', text: `${fmt(objArea(o).toFixed(1))} m²`, cw: 6.4 };
     // drop lines from the end until the rest fits inside the shape
-    let lines = [name, dims, area].filter(l => fits(l.text, l.cw));
+    let lines = (kind === 'room' ? [name, area, dims] : kind === 'furn' ? [] : kind === 'plot' ? [name, dims, area] : [])
+      .filter(l => fits(l.text, l.cw));
     if (!lines.includes(name)) { lines = []; }
     while (lines.length && lines.length * 17 + 6 > crossPx) { lines.pop(); }
     lines.forEach((l, i) => {
@@ -889,17 +1332,30 @@ function render() {
         `<circle class="dim-end ${cls}" cx="${f(a[0])}" cy="${f(a[1])}" r="2.5"/><circle class="dim-end ${cls}" cx="${f(b[0])}" cy="${f(b[1])}" r="2.5"/>` +
         `<text class="lbl dim-lbl ${cls}" x="${f(m[0])}" y="${f(m[1])}">${r.d.toFixed(2)} m</text>`;
     };
-    if (state.showDims && st.level !== 'out') {
-      for (const [a, b] of edges(simplify(plot))) {
-        const r = polySegClosest(C, a, b);
-        h += dimLine(r, so.building && state.setback > 0 && r.d < state.setback - 0.005 ? 'bad' : '');
+    if (rh) {
+      if (state.showDims && !isOpening(so) && st.level !== 'out') {
+        for (const [a, b] of edges(simplify(innerOutline()))) { h += dimLine(polySegClosest(C, a, b), ''); }
       }
-    }
-    if (state.showDims) {
-      for (const other of cur().objects) {
-        if (other === so) { continue; }
-        const r = polyPolyClosest(C, corners(other));
-        if (r.d > 0.05 && r.d < 25) { h += dimLine(r, 'between'); }
+      if (state.showDims && kindOf(so) === 'furn') {
+        for (const other of items()) {
+          if (other === so || kindOf(other) !== 'furn') { continue; }
+          const r = polyPolyClosest(C, corners(other));
+          if (r.d > 0.02 && r.d < 3) { h += dimLine(r, 'between'); }
+        }
+      }
+    } else {
+      if (state.showDims && st.level !== 'out') {
+        for (const [a, b] of edges(simplify(plot))) {
+          const r = polySegClosest(C, a, b);
+          h += dimLine(r, so.building && state.setback > 0 && r.d < state.setback - 0.005 ? 'bad' : '');
+        }
+      }
+      if (state.showDims) {
+        for (const other of items()) {
+          if (other === so) { continue; }
+          const r = polyPolyClosest(C, corners(other));
+          if (r.d > 0.05 && r.d < 25) { h += dimLine(r, 'between'); }
+        }
       }
     }
     if (ui.hiWall != null && ui.hiWall < n) {
@@ -924,7 +1380,7 @@ function render() {
     h += `<circle class="handle" cx="${f(rp[0])}" cy="${f(rp[1])}" r="7"/><circle class="hit rot" data-h="rot" cx="${f(rp[0])}" cy="${f(rp[1])}" r="15"/>`;
   }
 
-  plot.forEach((p, i) => {
+  (rh ? [] : plot).forEach((p, i) => {
     const s = S(p);
     if (ui.tool === 'plot') {
       h += `<circle class="vtx big" cx="${f(s[0])}" cy="${f(s[1])}" r="7"/><circle class="pv-hit" data-pv="${i}" cx="${f(s[0])}" cy="${f(s[1])}" r="16"/>`;
@@ -939,7 +1395,7 @@ function render() {
     if (d > 0) { h += `<text class="lbl m-lbl" x="${f(m[0])}" y="${f(m[1] - 12)}">${d.toFixed(2)} m</text>`; }
   }
 
-  h += `<g transform="translate(${W - 30} 36) rotate(${state.north})"><path class="ov" d="M0 -16 L7 8 L0 3 L-7 8Z"/><text class="ov-text" y="24" transform="rotate(${-state.north} 0 20)">N</text></g>`;
+  h += `<g transform="translate(${W - 30} 36) rotate(${state.north - (rh ? rh.rot : 0)})"><path class="ov" d="M0 -16 L7 8 L0 3 L-7 8Z"/><text class="ov-text" y="24" transform="rotate(${-(state.north - (rh ? rh.rot : 0))} 0 20)">N</text></g>`;
   const nice = [1, 2, 5, 10, 20, 50].find(m => m * k >= 70) || 50, bw = nice * k, bx = W - 22 - bw, by = H - 22;
   h += `<path class="ov-line" d="M${f(bx)} ${by - 5}V${by}H${f(bx + bw)}V${by - 5}"/><text class="ov-text" x="${f(bx + bw / 2)}" y="${by - 8}">${nice} M</text>`;
 
@@ -958,6 +1414,23 @@ function setVal(id, v) {
 }
 let wallsKey = '';
 function updatePanel(statuses) {
+  const rh = host();
+  if (rh) { updateRoomSummary(rh, statuses); } else { updatePlotSummary(statuses); }
+  updateListAndSelection(statuses, rh);
+}
+function updateRoomSummary(rh, statuses) {
+  const floor = Math.abs(polyArea(innerOutline())), rooms = items().filter(o => kindOf(o) === 'room');
+  const roomArea = rooms.reduce((sum, o) => sum + objArea(o), 0);
+  $('#r-floor').innerHTML = `${fmt(floor.toFixed(1))} m²<small>inside the outer walls</small>`;
+  $('#r-rooms').innerHTML = `${fmt(roomArea.toFixed(1))} m²<small>${rooms.length} room${rooms.length === 1 ? '' : 's'}</small>`;
+  $('#r-free').innerHTML = `${fmt(Math.max(0, floor - roomArea).toFixed(1))} m²<small>floor not in a room</small>`;
+  $('#r-foot').innerHTML = `${fmt(objArea(rh).toFixed(1))} m²<small>outer footprint</small>`;
+  const outN = [...statuses.values()].filter(s => s.level === 'out').length;
+  $('#r-warn').hidden = !outN;
+  $('#r-warn').className = 'warnline bad';
+  $('#r-warn').textContent = outN ? `${outN} outside the building` : '';
+}
+function updatePlotSummary(statuses) {
   const plotA = Math.abs(polyArea(state.plot));
   const base = state.officialArea > 0 ? state.officialArea : plotA;
   const b = unionArea(cur().objects.filter(o => o.building)), all = unionArea(cur().objects);
@@ -977,12 +1450,13 @@ function updatePanel(statuses) {
   w.hidden = !outN && !warnN;
   w.className = 'warnline' + (outN ? ' bad' : '');
   w.textContent = [outN && `${outN} outside the plot`, warnN && `${warnN} closer than ${fmt(state.setback)} m to the border`].filter(Boolean).join(' · ');
-
-  $('#list').innerHTML = cur().objects.length ? cur().objects.map(o => {
+}
+function updateListAndSelection(statuses, rh) {
+  $('#list').innerHTML = items().length ? items().map(o => {
     const st = statuses.get(o.id), sz = objSize(o);
-    const dm = `${isRect(o) ? `${fmt(sz.w)}×${fmt(sz.d)} · ` : ''}${fmt(objArea(o).toFixed(1))} m²`;
-    return `<button type="button" class="item${o.id === ui.sel ? ' on' : ''}" data-id="${esc(o.id)}"><span class="sw t-${o.type}"></span><span class="nm">${esc(o.name)}</span><span class="dm">${dm}</span><span class="chip ${st.level}">${STATUS_TEXT[st.level]}</span></button>`;
-  }).join('') : '<p class="empty">Nothing on the plot yet. Add a house or a carport above.</p>';
+    const dm = isOpening(o) ? `${fmt(sz.w)} m wide` : `${isRect(o) ? `${fmt(sz.w)}×${fmt(sz.d)} · ` : ''}${fmt(objArea(o).toFixed(1))} m²`;
+    return `<button type="button" class="item${o.id === ui.sel ? ' on' : ''}" data-id="${esc(o.id)}">${pieceIcon(o.type, objSize(o).w, objSize(o).d, 20) || `<span class="sw t-${o.type} k-${kindOf(o)}"></span>`}<span class="nm">${esc(o.name)}</span><span class="dm">${dm}</span><span class="chip ${st.level}">${STATUS_TEXT[st.level]}</span></button>`;
+  }).join('') : rh ? '<p class="empty">Nothing here yet. Add rooms, doors, windows or furniture above.</p>' : '<p class="empty">Nothing on the plot yet. Add a house or a carport above.</p>';
 
   const so = selObj();
   $('#sel-sec').hidden = !so;
@@ -1001,14 +1475,18 @@ function updatePanel(statuses) {
         so.pts.map((_, i) => `<label class="wall-row" for="wl-${i}"><span>${i + 1}</span><input id="wl-${i}" data-wall="${i}" type="number" step="0.05" min="0.3" max="100" inputmode="decimal"><span>m</span></label>`).join('');
     }
     so.pts.forEach((p, i) => setVal(`#wl-${i}`, fmt(dist(p, so.pts[(i + 1) % so.pts.length]))));
+    $('#a-rooms').hidden = !!rh || !canHaveRooms(so);
     const st = statuses.get(so.id);
-    const msg = st.level === 'out' ? '<b style="color:var(--bad)">Part of it is outside the plot.</b>'
+    const msg = rh
+      ? (isOpening(so) ? 'Drag it along a wall; it snaps into place.' : st.level === 'out' ? '<b style="color:var(--bad)">Part of it is outside the building.</b>' : `${st.minD.toFixed(2)} m from the nearest wall.`)
+      : st.level === 'out' ? '<b style="color:var(--bad)">Part of it is outside the plot.</b>'
       : st.level === 'warn' ? `<b style="color:var(--warn)">${st.minD.toFixed(2)} m from the border, ${fmt(state.setback)} m needed.</b>`
       : `${st.minD.toFixed(2)} m from the nearest border.`;
     $('#f-status').innerHTML = `${fmt(objArea(so).toFixed(1))} m² · ${msg}`;
   } else {
     wallsKey = '';
   }
+  if (rh) { setVal('#o-wall', fmt(wallOf(rh))); }
   setVal('#o-setback', fmt(state.setback));
   setVal('#o-area', state.officialArea || '');
   setVal('#o-grid', state.showGrid);
@@ -1021,19 +1499,20 @@ const HINTS = {
   select: 'Drag a shape to move it · drag orange wall handles to move a wall · drag corners · double-click a wall handle to add corners · round handle rotates',
   measure: 'Drag between two points to measure. It snaps to corners.',
   plot: 'Drag the red corners to match your survey. Edge lengths update as you drag.',
+  room: 'Drag rooms and furniture to move them · doors and windows snap onto walls · right-click for more options',
 };
 function setTool(t) {
   ui.tool = t;
   if (t !== 'measure') { ui.measure = null; }
   document.querySelectorAll('[data-tool]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.tool === t)));
-  $('#hint').innerHTML = `<span>${HINTS[t]}</span>`;
+  $('#hint').innerHTML = `<span>${HINTS[ui.room && t === 'select' ? 'room' : t]}</span>`;
   render();
 }
 
 // pointer input
 const pointers = new Map();
 function snapPoint(w) {
-  const cands = [...state.plot, ...cur().objects.flatMap(corners)];
+  const cands = [...outline(), ...(host() ? innerOutline() : []), ...items().flatMap(corners)];
   let best = null, bd = 12 / view.k;
   for (const c of cands) {
     const d = dist(c, w);
@@ -1082,8 +1561,31 @@ svg.addEventListener('pointerdown', e => {
     ui.lastTap = { key: tapKey, t: now };
     ui.drag = { kind, i, o0: clone(o), l0: toLocal(o, w), snap };
   } else if (ui.tool === 'select' && t && t.dataset.obj) {
+    const now = performance.now(), tapKey = 'obj' + t.dataset.obj;
+    // double-click a house to open its room planner
+    if (!ui.room && ui.lastTap.key === tapKey && now - ui.lastTap.t < 400) {
+      const target = cur().objects.find(x => x.id === t.dataset.obj);
+      if (target && canHaveRooms(target)) {
+        ui.lastTap = {};
+        pointers.delete(e.pointerId);
+        openRoomPlanner(target.id);
+        return;
+      }
+    }
+    ui.lastTap = { key: tapKey, t: now };
     ui.sel = t.dataset.obj;
     const o = selObj();
+    if (e.pointerType === 'touch') {
+      ui.press = { id: o.id, p, timer: setTimeout(() => {
+        if (!ui.press) { return; }
+        const press = ui.press;
+        ui.press = null;
+        if (ui.drag && ui.drag.snap != null && ui.drag.snap !== snapshot()) { return; }
+        ui.drag = null;
+        pointers.clear();
+        openMenu(press.p, press.id);
+      }, 550) };
+    }
     if (locked) { blocked(); }
     ui.drag = locked ? { kind: 'pan', s: p, t0: [view.tx, view.ty] } : { kind: 'move', off: sub(w, [o.x, o.y]), snap };
   } else {
@@ -1097,6 +1599,10 @@ svg.addEventListener('pointermove', e => {
   if (!pointers.has(e.pointerId)) { return; }
   const p = evPt(e);
   pointers.set(e.pointerId, p);
+  if (ui.press && dist(p, ui.press.p) > 8) {
+    clearTimeout(ui.press.timer);
+    ui.press = null;
+  }
   const d = ui.drag;
   if (!d) { return; }
   const w = toWorld(p), o = selObj();
@@ -1114,8 +1620,13 @@ svg.addEventListener('pointermove', e => {
   } else if (d.kind === 'pv') {
     state.plot[d.i] = [rnd(w[0], 0.01), rnd(w[1], 0.01)];
   } else if (o && d.kind === 'move') {
-    o.x = r3(rnd(w[0] - d.off[0], 0.05));
-    o.y = r3(rnd(w[1] - d.off[1], 0.05));
+    if (host() && isOpening(o)) {
+      snapOpening(o, sub(w, d.off));
+    } else {
+      o.x = r3(rnd(w[0] - d.off[0], 0.05));
+      o.y = r3(rnd(w[1] - d.off[1], 0.05));
+      if (host() && !e.shiftKey) { snapToWalls(o); }
+    }
   } else if (o && d.kind === 'rot') {
     const a = deg(Math.atan2(w[1] - o.y, w[0] - o.x)) + 90;
     o.rot = e.shiftKey ? normAngle(rnd(a, 0.5)) : snapAngle(a);
@@ -1142,6 +1653,10 @@ svg.addEventListener('pointermove', e => {
 });
 
 function pointerEnd(e) {
+  if (ui.press) {
+    clearTimeout(ui.press.timer);
+    ui.press = null;
+  }
   if (!pointers.has(e.pointerId)) { return; }
   pointers.delete(e.pointerId);
   if (ui.drag && ui.drag.kind === 'pinch') {
@@ -1162,7 +1677,7 @@ svg.addEventListener('wheel', e => {
 
 // panel actions
 function nextName(base) {
-  const names = new Set(cur().objects.map(o => o.name));
+  const names = new Set(items().map(o => o.name));
   if (!names.has(base)) { return base; }
   let i = 2;
   while (names.has(`${base} ${i}`)) { i++; }
@@ -1170,25 +1685,24 @@ function nextName(base) {
 }
 function addObject(preset) {
   if (blocked()) { return; }
-  const T = TYPES[preset.type], [W, H] = stageSize();
+  const T = TYPES[preset.type], [W, H] = stageSize(), h = host(), area = h ? innerOutline() : state.plot;
   let c = toWorld([W / 2, H / 2]);
-  if (!pointInPoly(c, state.plot)) { c = centroid(state.plot); }
-  const last = cur().objects[cur().objects.length - 1];
-  const rot = last ? last.rot : nearestQuarter(edgeAngle(longestEdge(state.plot)), 0);
+  if (!pointInPoly(c, area)) { c = centroid(area); }
+  const list = items(), last = list[list.length - 1];
+  const rot = h ? 0 : last ? last.rot : nearestQuarter(edgeAngle(longestEdge(state.plot)), 0);
+  const w = preset.w || T.w, d = h && (T.kind === 'door' || T.kind === 'window') ? wallOf(h) : preset.d || T.d;
   mutate(() => {
     const o = {
-      id: uid(), type: preset.type, name: nextName(preset.label), x: r3(c[0]), y: r3(c[1]), rot, building: T.building,
-      pts: preset.shape === 'L' ? clone(L_PTS) : rectPts(T.w, T.d),
+      id: uid(), type: preset.type, name: nextName(preset.label), x: r3(c[0]), y: r3(c[1]), rot, building: !!T.building,
+      pts: preset.shape === 'L' ? clone(L_PTS) : rectPts(w, d),
     };
-    cur().objects.push(o);
+    pushItem(o);
+    if (h && isOpening(o)) { snapOpening(o, c, true); }
     ui.sel = o.id;
   });
   if (ui.tool !== 'select') { setTool('select'); }
 }
-$('#presets').innerHTML = PRESETS.map((p, i) =>
-  `<button type="button" class="preset t-${p.type}" data-preset="${i}"><span class="sw"></span><span><b>${p.label}</b><small>${p.note}</small></span></button>`).join('');
-$('#presets').addEventListener('click', e => { const b = e.target.closest('[data-preset]'); if (b) { addObject(PRESETS[+b.dataset.preset]); } });
-$('#f-type').innerHTML = Object.entries(TYPES).map(([k, t]) => `<option value="${k}">${t.label}</option>`).join('');
+$('#presets').addEventListener('click', e => { const b = e.target.closest('[data-preset]'); if (b) { addObject(presetList[+b.dataset.preset]); } });
 
 $('#list').addEventListener('click', e => {
   const b = e.target.closest('[data-id]');
@@ -1228,21 +1742,30 @@ bindForm($('#set-form'), el => {
   if (el.id === 'o-area') { state.officialArea = v > 0 ? v : 0; }
   if (el.id === 'o-grid') { state.showGrid = el.checked; }
   if (el.id === 'o-dims') { state.showDims = el.checked; }
+  if (el.id === 'o-wall' && v >= 0.05 && v <= 1 && host() && !blocked()) { ensureInterior(host()).wall = v; }
 });
 
 function alignToEdge(o) {
   const C = corners(o);
-  const e = edges(simplify(state.plot)).map(e => ({ e, d: polySegClosest(C, e[0], e[1]).d })).sort((x, y) => x.d - y.d)[0].e;
+  const e = edges(simplify(outline())).map(e => ({ e, d: polySegClosest(C, e[0], e[1]).d })).sort((x, y) => x.d - y.d)[0].e;
   o.rot = nearestQuarter(edgeAngle(e), o.rot);
 }
 const withSel = fn => () => { const o = selObj(); if (o && !blocked()) { mutate(() => fn(o)); } };
-const rotate90 = withSel(o => { o.rot = normAngle(o.rot + 90); });
+const flip = o => {
+  o.rot = normAngle(o.rot + 180);
+  if (o.out) { delete o.out; } else { o.out = true; }
+};
+const rotate90 = withSel(o => { if (isOpening(o)) { flip(o); } else { o.rot = normAngle(o.rot + 90); } });
+const flipOpening = withSel(flip);
+const mirrorDoor = withSel(o => { if (o.mirror) { delete o.mirror; } else { o.mirror = true; } });
 const duplicate = withSel(o => {
   const c = { ...clone(o), id: uid(), name: nextName(o.name.replace(/ \d+$/, '')), x: o.x + 1, y: o.y + 1 };
-  cur().objects.push(c);
+  pushItem(c);
   ui.sel = c.id;
 });
-const remove = withSel(o => { cur().objects = cur().objects.filter(x => x !== o); ui.sel = null; });
+const remove = withSel(o => { setItems(items().filter(x => x !== o)); ui.sel = null; });
+$('#a-rooms').addEventListener('click', () => { const o = selObj(); if (o) { openRoomPlanner(o.id); } });
+$('#b-back').addEventListener('click', closeRoomPlanner);
 $('#a-align').addEventListener('click', withSel(alignToEdge));
 $('#a-rot').addEventListener('click', rotate90);
 $('#a-dup').addEventListener('click', duplicate);
@@ -1305,7 +1828,7 @@ window.addEventListener('keydown', e => {
   if (ctrl || e.altKey) { return; }
   if (key === 'v') { setTool('select'); return; }
   if (key === 'm') { setTool('measure'); return; }
-  if (key === 'p') { setTool('plot'); return; }
+  if (key === 'p') { if (!ui.room) { setTool('plot'); } return; }
   if (key === 'escape') { ui.sel = null; ui.measure = null; render(); return; }
   const o = selObj();
   if (!o) { return; }
@@ -1785,6 +2308,7 @@ if (!FIREBASE_CONFIG && location.hash.startsWith('#plan=')) {
   }
   history.replaceState(null, '', location.pathname + location.search);
 }
+applyMode();
 setTool('select');
 new ResizeObserver(() => { if (!view.fitted) { fit(); } render(); }).observe(svg);
 startCloud();
