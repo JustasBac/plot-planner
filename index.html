@@ -1285,8 +1285,34 @@ function snapWallEnd(o, which) {
 }
 
 // rooms line up with the outer walls and with each other; furniture with the inner face of room walls
+// x and y lines that room edges snap to: the inner face of the outer walls and every edge of other rooms and walls,
+// so two rooms can share one wall exactly, also along the steps of L-shaped rooms
+function snapLines(exceptId, withOutline = true) {
+  const xs = [], ys = [];
+  const take = P => { for (const p of P) { xs.push(p[0]); ys.push(p[1]); } };
+  if (withOutline) { take(innerOutline()); }
+  for (const r of items()) { if (r.id !== exceptId && (kindOf(r) === 'room' || kindOf(r) === 'wall')) { take(corners(r)); } }
+  return { xs, ys };
+}
+function nearestLine(lines, v, tol) {
+  let best = null;
+  for (const c of lines) { if (Math.abs(c - v) < tol && (best === null || Math.abs(c - v) < Math.abs(best - v))) { best = c; } }
+  return best;
+}
 function snapToWalls(o) {
   if (Math.abs(normAngle(o.rot - rnd(o.rot, 90))) > 0.01) { return; }
+  if (kindOf(o) === 'room') {
+    const tol = Math.max(0.12, 8 / view.k), C = corners(o), lines = snapLines(o.id);
+    let dx = null, dy = null;
+    for (const p of C) {
+      const x = nearestLine(lines.xs, p[0], tol), y = nearestLine(lines.ys, p[1], tol);
+      if (x !== null && (dx === null || Math.abs(x - p[0]) < Math.abs(dx))) { dx = x - p[0]; }
+      if (y !== null && (dy === null || Math.abs(y - p[1]) < Math.abs(dy))) { dy = y - p[1]; }
+    }
+    if (dx !== null) { o.x = r3(o.x + dx); }
+    if (dy !== null) { o.y = r3(o.y + dy); }
+    return;
+  }
   const tol = Math.max(0.12, 8 / view.k), b = bbox(corners(o)), xs = [], ys = [], face = kindOf(o) === 'furn' ? 0.06 : 0;
   for (const p of innerOutline()) {
     xs.push(p[0]);
@@ -2218,11 +2244,17 @@ svg.addEventListener('pointermove', e => {
     const a = deg(Math.atan2(w[1] - o.y, w[0] - o.x)) + 90;
     o.rot = e.shiftKey ? normAngle(rnd(a, 0.5)) : snapAngle(a);
   } else if (o && d.kind === 'vertex') {
-    const o0 = d.o0, n = o0.pts.length, l = toLocal(o0, w).map(v => rnd(v, 0.05));
+    const o0 = d.o0, n = o0.pts.length;
+    let l = toLocal(o0, w).map(v => rnd(v, 0.05));
     const tol = Math.max(0.15, 8 / view.k);
     for (const q of [o0.pts[(d.i - 1 + n) % n], o0.pts[(d.i + 1) % n]]) {
       if (Math.abs(l[0] - q[0]) < tol) { l[0] = q[0]; }
       if (Math.abs(l[1] - q[1]) < tol) { l[1] = q[1]; }
+    }
+    if (host() && !e.shiftKey && (kindOf(o0) === 'room' || o0.isBuilding) && Math.abs(normAngle(o0.rot - rnd(o0.rot, 90))) < 0.01) {
+      const lines = snapLines(o0.id, !o0.isBuilding), wp = add([o0.x, o0.y], rotV(l, o0.rot)), lt = Math.max(0.06, 8 / view.k);
+      const x = nearestLine(lines.xs, wp[0], lt), y = nearestLine(lines.ys, wp[1], lt);
+      l = rotV(sub([x !== null ? x : wp[0], y !== null ? y : wp[1]], [o0.x, o0.y]), -o0.rot).map(r3);
     }
     Object.assign(o, clone(o0));
     o.pts[d.i] = l;
@@ -2230,7 +2262,19 @@ svg.addEventListener('pointermove', e => {
   } else if (o && d.kind === 'wall') {
     const o0 = d.o0, n = o0.pts.length, a = o0.pts[d.i], b = o0.pts[(d.i + 1) % n];
     const u = norm(sub(b, a)), nn = [-u[1], u[0]];
-    const off = rnd(dot(sub(toLocal(o0, w), d.l0), nn), 0.05);
+    let off = rnd(dot(sub(toLocal(o0, w), d.l0), nn), 0.05);
+    if (host() && !e.shiftKey && (kindOf(o0) === 'room' || o0.isBuilding)) {
+      const wa = add([o0.x, o0.y], rotV(add(a, mul(nn, off)), o0.rot)), wb = add([o0.x, o0.y], rotV(add(b, mul(nn, off)), o0.rot));
+      const axis = Math.abs(wa[0] - wb[0]) < 1e-6 ? 0 : Math.abs(wa[1] - wb[1]) < 1e-6 ? 1 : -1;
+      if (axis >= 0) {
+        const lines = snapLines(o0.id, !o0.isBuilding), to = nearestLine(axis ? lines.ys : lines.xs, wa[axis], Math.max(0.06, 8 / view.k));
+        if (to !== null) {
+          const shift = [0, 0];
+          shift[axis] = to - wa[axis];
+          off += dot(rotV(shift, -o0.rot), nn);
+        }
+      }
+    }
     Object.assign(o, clone(o0));
     o.pts[d.i] = add(a, mul(nn, off));
     o.pts[(d.i + 1) % n] = add(b, mul(nn, off));
