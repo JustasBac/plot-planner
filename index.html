@@ -273,7 +273,9 @@ kbd { font: 11.5px var(--f-mono); border: 1px solid var(--rule); border-bottom-w
 .tab-add:hover { color: var(--ink); border-color: var(--muted); }
 /* room planner */
 .floor { fill: var(--floor); }
-.wallband { fill: var(--wall); pointer-events: none; }
+.wallband { fill: var(--wall); cursor: pointer; }
+.bld-sel { fill: none; stroke: var(--accent); stroke-width: 2.5; pointer-events: none; }
+#sel-sec.is-building .not-building { display: none; }
 .inner-lbl { fill: var(--muted); font-size: 11.5px; }
 .obj.k-room polygon { fill: var(--room); stroke: none; fill-opacity: 1; }
 .room-wall { fill: none; stroke: var(--wall); stroke-linecap: square; pointer-events: none; }
@@ -400,10 +402,8 @@ button.person { cursor: pointer; }
     <section class="room-only">
       <h2>Building</h2>
       <dl class="stats">
-        <div><dt>Floor area</dt><dd id="r-floor">–</dd></div>
-        <div><dt>Rooms</dt><dd id="r-rooms">–</dd></div>
-        <div><dt>Outside rooms</dt><dd id="r-free">–</dd></div>
-        <div><dt>Footprint</dt><dd id="r-foot">–</dd></div>
+        <div><dt>Built-up area</dt><dd id="r-foot">–</dd></div>
+        <div><dt>Effective area</dt><dd id="r-floor">–</dd></div>
       </dl>
       <p class="warnline" id="r-warn" hidden></p>
     </section>
@@ -434,15 +434,15 @@ button.person { cursor: pointer; }
       <h2>Selected</h2>
       <form id="sel-form" class="fields" autocomplete="off">
         <div class="field half"><label for="f-name">Name</label><input id="f-name" type="text" maxlength="40"></div>
-        <div class="field"><label for="f-type">Type</label><select id="f-type"></select></div>
+        <div class="field not-building"><label for="f-type">Type</label><select id="f-type"></select></div>
         <div class="field"><label for="f-w">Outer width</label><input id="f-w" type="number" step="0.1" min="0.3" max="100" inputmode="decimal"></div>
         <div class="field"><label for="f-d">Outer depth</label><input id="f-d" type="number" step="0.1" min="0.3" max="100" inputmode="decimal"></div>
-        <div class="field"><label for="f-rot">Angle, °</label><input id="f-rot" type="number" step="0.5" inputmode="decimal"></div>
+        <div class="field not-building"><label for="f-rot">Angle, °</label><input id="f-rot" type="number" step="0.5" inputmode="decimal"></div>
         <label class="check field wide plot-only"><input id="f-bld" type="checkbox"> Counts as a building (coverage and setback)</label>
         <div class="walls" id="walls"></div>
       </form>
       <p id="f-status"></p>
-      <div class="row-btns">
+      <div class="row-btns not-building">
         <button class="btn primary plot-only" id="a-rooms" hidden title="Plan rooms, doors, windows and furniture">Open room planner</button>
         <button class="btn" id="a-align" title="Turn it parallel to the nearest plot edge">Align to edge</button>
         <button class="btn" id="a-rot" title="Rotate 90° (R)">Rotate 90°</button>
@@ -993,7 +993,30 @@ function restore(from, to) {
   save();
   render();
 }
-const selObj = () => items().find(o => o.id === ui.sel) || null;
+const BUILDING = '@building';
+// the building itself in the room planner's coordinates; edits to it are copied back with saveBuilding
+function buildingProxy() {
+  const h = host();
+  return h && { id: BUILDING, type: h.type, name: h.name, x: 0, y: 0, rot: 0, pts: h.pts.map(p => p.slice()), isBuilding: true };
+}
+const selObj = () => (ui.room && ui.sel === BUILDING ? buildingProxy() : items().find(o => o.id === ui.sel) || null);
+function saveBuilding(o, settle) {
+  const h = host();
+  if (!h) { return; }
+  h.pts = r3(o.pts.map(p => add(rotV(p, o.rot), [o.x, o.y])));
+  h.name = o.name;
+  if (settle) { settleBuilding(); }
+}
+// moves the building's centre back to its own origin; the view moves along so nothing jumps on screen
+function settleBuilding() {
+  const h = host();
+  if (!h) { return; }
+  const b = bbox(h.pts), c = [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2];
+  if (Math.abs(c[0]) < 1e-6 && Math.abs(c[1]) < 1e-6) { return; }
+  recenter(h);
+  view.tx += c[0] * view.k;
+  view.ty += c[1] * view.k;
+}
 function mutate(fn) {
   const prev = snapshot();
   fn();
@@ -1375,6 +1398,11 @@ $('#presets').addEventListener('click', () => { tip.hidden = true; });
 // right-click (or press and hold) menu
 const menu = $('#ctxmenu');
 function openMenu(p, id) {
+  if (id === BUILDING) {
+    ui.sel = id;
+    render();
+    return;
+  }
   ui.sel = id;
   if (ui.tool !== 'select') { setTool('select'); } else { render(); }
   const o = selObj();
@@ -1467,7 +1495,7 @@ function render() {
   };
   if (rh) {
     const outer = rh.pts, inner = innerOutline();
-    h += `<polygon points="${pts(inner)}" class="floor"/><path d="M${pts(outer)}Z M${pts(inner)}Z" fill-rule="evenodd" class="wallband"/>`;
+    h += `<polygon points="${pts(inner)}" class="floor"/><path d="M${pts(outer)}Z M${pts(inner)}Z" fill-rule="evenodd" class="wallband" data-obj="${BUILDING}"/>`;
     for (const [a, b] of edges(outer)) { h += edgeLabel(outer, a, b, 'edge-lbl', 14, `${dist(a, b).toFixed(2)} m`); }
     for (const [a, b] of edges(inner)) { h += edgeLabel(inner, a, b, 'inner-lbl', -12, `${dist(a, b).toFixed(2)} m`); }
   } else {
@@ -1515,7 +1543,9 @@ function render() {
         `<circle class="dim-end ${cls}" cx="${f(a[0])}" cy="${f(a[1])}" r="2.5"/><circle class="dim-end ${cls}" cx="${f(b[0])}" cy="${f(b[1])}" r="2.5"/>` +
         `<text class="lbl dim-lbl ${cls}" x="${f(m[0])}" y="${f(m[1])}">${r.d.toFixed(2)} m</text>`;
     };
-    if (rh) {
+    if (so.isBuilding) {
+      h += `<polygon points="${pts(C)}" class="bld-sel"/>`;
+    } else if (rh) {
       if (state.showDims && !isOpening(so) && st.level !== 'out') {
         for (const [a, b] of edges(simplify(innerOutline()))) { h += dimLine(polySegClosest(C, a, b), ''); }
       }
@@ -1554,7 +1584,7 @@ function render() {
 
     const b = bbox(so.pts), uy = rotV([0, 1], so.rot);
     const top = S(add([so.x, so.y], rotV([(b.x0 + b.x1) / 2, b.y0], so.rot))), rp = add(top, mul(uy, -30));
-    h += `<line class="rot-line" x1="${f(top[0])}" y1="${f(top[1])}" x2="${f(rp[0])}" y2="${f(rp[1])}"/>`;
+    if (!so.isBuilding) { h += `<line class="rot-line" x1="${f(top[0])}" y1="${f(top[1])}" x2="${f(rp[0])}" y2="${f(rp[1])}"/>`; }
     for (let i = 0; i < n; i++) {
       const sa = S(C[i]), sb = S(C[(i + 1) % n]), m = mul(add(sa, sb), 0.5);
       if (dist(sa, sb) < 30) { continue; }
@@ -1565,7 +1595,7 @@ function render() {
       const p = S(C[i]);
       h += `<circle class="handle" cx="${f(p[0])}" cy="${f(p[1])}" r="5"/><circle class="hit vtx-h" data-v="${i}" cx="${f(p[0])}" cy="${f(p[1])}" r="11"/>`;
     }
-    h += `<circle class="handle" cx="${f(rp[0])}" cy="${f(rp[1])}" r="7"/><circle class="hit rot" data-h="rot" cx="${f(rp[0])}" cy="${f(rp[1])}" r="15"/>`;
+    if (!so.isBuilding) { h += `<circle class="handle" cx="${f(rp[0])}" cy="${f(rp[1])}" r="7"/><circle class="hit rot" data-h="rot" cx="${f(rp[0])}" cy="${f(rp[1])}" r="15"/>`; }
   }
 
   (rh ? [] : plot).forEach((p, i) => {
@@ -1607,12 +1637,9 @@ function updatePanel(statuses) {
   updateListAndSelection(statuses, rh);
 }
 function updateRoomSummary(rh, statuses) {
-  const floor = Math.abs(polyArea(innerOutline())), rooms = items().filter(o => kindOf(o) === 'room');
-  const roomArea = rooms.reduce((sum, o) => sum + objArea(o), 0);
-  $('#r-floor').innerHTML = `${fmt(floor.toFixed(1))} m²<small>inside the outer walls</small>`;
-  $('#r-rooms').innerHTML = `${fmt(roomArea.toFixed(1))} m²<small>${rooms.length} room${rooms.length === 1 ? '' : 's'}</small>`;
-  $('#r-free').innerHTML = `${fmt(Math.max(0, floor - roomArea).toFixed(1))} m²<small>floor not in a room</small>`;
-  $('#r-foot').innerHTML = `${fmt(objArea(rh).toFixed(1))} m²<small>outer footprint</small>`;
+  const floor = Math.abs(polyArea(innerOutline()));
+  $('#r-floor').innerHTML = `${fmt(floor.toFixed(1))} m²`;
+  $('#r-foot').innerHTML = `${fmt(objArea(rh).toFixed(1))} m²`;
   const outN = [...statuses.values()].filter(s => s.level === 'out').length;
   $('#r-warn').hidden = !outN;
   $('#r-warn').className = 'warnline bad';
@@ -1644,6 +1671,7 @@ function updateListAndSelection(statuses, rh) {
 
   const so = selObj();
   $('#sel-sec').hidden = !so;
+  $('#sel-sec').classList.toggle('is-building', !!(so && so.isBuilding));
   if (so) {
     const sz = objSize(so);
     setVal('#f-name', so.name);
@@ -1661,12 +1689,15 @@ function updateListAndSelection(statuses, rh) {
     so.pts.forEach((p, i) => setVal(`#wl-${i}`, fmt(dist(p, so.pts[(i + 1) % so.pts.length]))));
     $('#a-rooms').hidden = !!rh || !canHaveRooms(so);
     const st = statuses.get(so.id);
-    const msg = rh
-      ? (isOpening(so) ? 'Drag it along a wall; it snaps into place.' : st.level === 'out' ? '<b style="color:var(--bad)">Part of it is outside the building.</b>' : `${st.minD.toFixed(2)} m from the nearest wall.`)
+    // houses: built-up area (užstatymo plotas, outer walls included) and effective area inside the outer walls
+    const effective = canHaveRooms(so) ? Math.abs(polyArea(inset(so.pts, so.isBuilding ? wallOf(rh) : wallOf(so)) || so.pts)) : null;
+    const areas = effective != null ? `Built-up area (užstatymo plotas) <b>${fmt(objArea(so).toFixed(1))} m²</b> · effective area <b>${fmt(effective.toFixed(1))} m²</b>` : `${fmt(objArea(so).toFixed(1))} m²`;
+    const msg = so.isBuilding ? ''
+      : rh ? (isOpening(so) ? 'Drag it along a wall; it snaps into place.' : st.level === 'out' ? '<b style="color:var(--bad)">Part of it is outside the building.</b>' : `${st.minD.toFixed(2)} m from the nearest wall.`)
       : st.level === 'out' ? '<b style="color:var(--bad)">Part of it is outside the plot.</b>'
       : st.level === 'warn' ? `<b style="color:var(--warn)">${st.minD.toFixed(2)} m from the border, ${fmt(state.setback)} m needed.</b>`
       : `${st.minD.toFixed(2)} m from the nearest border.`;
-    $('#f-status').innerHTML = `${fmt(objArea(so).toFixed(1))} m² · ${msg}`;
+    $('#f-status').innerHTML = msg ? `${areas} · ${msg}` : areas;
   } else {
     wallsKey = '';
   }
@@ -1683,7 +1714,7 @@ const HINTS = {
   select: 'Drag a shape to move it · drag orange wall handles to move a wall · drag corners · double-click a wall handle to add corners · round handle rotates',
   measure: 'Drag between two points to measure. It snaps to corners.',
   plot: 'Drag the red corners to match your survey. Edge lengths update as you drag.',
-  room: 'Drag rooms and furniture to move them · doors and windows snap onto walls · right-click for more options',
+  room: 'Drag rooms and furniture to move them · doors and windows snap onto walls · click the outer wall to change the building · right-click for more options',
 };
 function setTool(t) {
   ui.tool = t;
@@ -1705,6 +1736,7 @@ function snapPoint(w) {
   return best ? best.slice() : [rnd(w[0], 0.05), rnd(w[1], 0.05)];
 }
 function endDrag() {
+  if (ui.drag && ui.room && ui.sel === BUILDING && (ui.drag.kind === 'vertex' || ui.drag.kind === 'wall')) { settleBuilding(); }
   if (ui.drag && ui.drag.snap != null) { commit(ui.drag.snap); }
   ui.drag = null;
   if (cloud.waiting) { rebuild(); }
@@ -1739,7 +1771,10 @@ svg.addEventListener('pointerdown', e => {
     const tapKey = kind + i, now = performance.now();
     if (kind !== 'rot' && ui.lastTap.key === tapKey && now - ui.lastTap.t < 400) {
       ui.lastTap = {};
-      mutate(() => { if (kind === 'wall') { splitWall(o, i); } else { removeCorner(o, i); } });
+      mutate(() => {
+        if (kind === 'wall') { splitWall(o, i); } else { removeCorner(o, i); }
+        if (o.isBuilding) { saveBuilding(o, true); }
+      });
       return;
     }
     ui.lastTap = { key: tapKey, t: now };
@@ -1771,7 +1806,7 @@ svg.addEventListener('pointerdown', e => {
       }, 550) };
     }
     if (locked) { blocked(); }
-    ui.drag = locked ? { kind: 'pan', s: p, t0: [view.tx, view.ty] } : { kind: 'move', off: sub(w, [o.x, o.y]), snap };
+    ui.drag = locked || o.isBuilding ? { kind: 'pan', s: p, t0: [view.tx, view.ty] } : { kind: 'move', off: sub(w, [o.x, o.y]), snap };
   } else {
     if (ui.tool === 'select') { ui.sel = null; }
     ui.drag = { kind: 'pan', s: p, t0: [view.tx, view.ty] };
@@ -1833,6 +1868,7 @@ svg.addEventListener('pointermove', e => {
     o.pts[(d.i + 1) % n] = add(b, mul(nn, off));
     recenter(o);
   }
+  if (o && o.isBuilding && (d.kind === 'vertex' || d.kind === 'wall')) { saveBuilding(o, false); }
   render();
 });
 
@@ -1908,6 +1944,10 @@ bindForm($('#sel-form'), el => {
   }
   if (el.id === 'f-w' && v >= 0.3 && v <= 100) { setSize(o, v, sz.d); }
   if (el.id === 'f-d' && v >= 0.3 && v <= 100) { setSize(o, sz.w, v); }
+  if (o.isBuilding) {
+    saveBuilding(o, true);
+    return;
+  }
   if (el.id === 'f-rot' && Number.isFinite(v)) { o.rot = normAngle(v); }
   if (el.id === 'f-bld') { o.building = el.checked; }
 });
@@ -1928,7 +1968,7 @@ function alignToEdge(o) {
   const e = edges(simplify(outline())).map(e => ({ e, d: polySegClosest(C, e[0], e[1]).d })).sort((x, y) => x.d - y.d)[0].e;
   o.rot = nearestQuarter(edgeAngle(e), o.rot);
 }
-const withSel = fn => () => { const o = selObj(); if (o && !blocked()) { mutate(() => fn(o)); } };
+const withSel = fn => () => { const o = selObj(); if (o && !o.isBuilding && !blocked()) { mutate(() => fn(o)); } };
 const flip = o => {
   o.rot = normAngle(o.rot + 180);
   if (o.out) { delete o.out; } else { o.out = true; }
