@@ -276,6 +276,14 @@ kbd { font: 11.5px var(--f-mono); border: 1px solid var(--rule); border-bottom-w
 .room-wall { fill: none; stroke: var(--wall); stroke-linecap: square; pointer-events: none; }
 .obj.k-furn polygon { fill: transparent; stroke: none; }
 .obj.k-furn.st-out polygon { stroke: var(--bad); stroke-width: 2; }
+.obj.k-car polygon { fill: transparent; stroke: none; }
+.obj.k-car.st-out polygon { stroke: var(--bad); stroke-width: 2; }
+.obj.sel.k-car polygon { stroke: var(--accent); stroke-width: 2.5; }
+.glyph .g-glass { fill: #2a3236; }
+.glyph .g-head { fill: #fff6d8; }
+.glyph .g-tail { fill: #c2332b; }
+.glyph .g-firebox { fill: #161616; }
+.glyph .g-fire { fill: #e8792c; stroke: #f2a65a; }
 .obj.k-door polygon { fill: var(--floor); stroke: none; fill-opacity: 1; }
 .obj.k-window polygon { fill: var(--paper); stroke: var(--wall); stroke-width: 1; fill-opacity: 1; }
 .obj.sel.k-room polygon, .obj.sel.k-furn polygon, .obj.sel.k-door polygon, .obj.sel.k-window polygon { stroke: var(--accent); stroke-width: 2.5; }
@@ -297,6 +305,11 @@ kbd { font: 11.5px var(--f-mono); border: 1px solid var(--rule); border-bottom-w
 .k-door, .k-window { --c: var(--wall); }
 #presets { display: grid; gap: 6px; }
 .preset-h { margin: 6px 0 0; font: 600 12px var(--f-display); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.tip {
+  position: fixed; z-index: 20; pointer-events: none; display: grid; gap: 1px; padding: 6px 9px; border-radius: 6px;
+  background: var(--ink); color: var(--paper); font-size: 12.5px; white-space: nowrap; box-shadow: 0 4px 14px rgba(0, 0, 0, .2);
+}
+.tip b { font: 600 13px var(--f-display); letter-spacing: .04em; }
 .ctxmenu {
   position: absolute; z-index: 5; min-width: 200px; padding: 4px; display: grid;
   background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
@@ -435,10 +448,6 @@ button.person { cursor: pointer; }
       </div>
     </section>
 
-    <section>
-      <h2 id="list-title">On this page</h2>
-      <div class="list" id="list"></div>
-    </section>
 
     <section>
       <h2>Rules &amp; display</h2>
@@ -479,6 +488,8 @@ button.person { cursor: pointer; }
   </aside>
 </div>
 
+<div class="tip" id="tip" role="tooltip" hidden></div>
+
 <dialog class="dialog" id="confirm" aria-labelledby="confirm-title">
   <form method="dialog">
     <h2 id="confirm-title"></h2>
@@ -506,26 +517,82 @@ const TYPES = {
   pool: { label: 'Pool', w: 8, d: 4, building: false },
   custom: { label: 'Other', w: 4, d: 4, building: false },
 };
+const CAR_TYPES = {
+  focus: { label: 'Ford Focus wagon', w: 1.98, d: 4.68, kind: 'car', body: 1.83, color: '#4d6f8f', roof: 'body' },
+  modely: { label: 'Tesla Model Y', w: 2.13, d: 4.75, kind: 'car', body: 1.92, color: '#e4e6e8', roof: 'glass' },
+};
+Object.assign(TYPES, CAR_TYPES);
 const PRESETS = [
   { type: 'house', label: 'House', note: '12 × 10 m' },
   { type: 'house', label: 'L-shaped house', note: '14 × 12 m', shape: 'L' },
   ...['carport', 'garage', 'shed', 'terrace', 'driveway', 'parking', 'pool', 'custom'].map(t => ({ type: t, label: TYPES[t].label, note: `${TYPES[t].w} × ${TYPES[t].d} m` })),
+  { group: 'Cars', type: 'focus', label: 'Ford Focus wagon', note: '4.68 m long, 1.98 m with mirrors' },
+  { group: 'Cars', type: 'modely', label: 'Tesla Model Y', note: '4.75 m long, 2.13 m with mirrors' },
 ];
+// PAX frames are 50, 75 or 100 cm wide and 58 cm deep; up to three frames side by side
+const PAX_SIZES = (() => {
+  const frames = [100, 75, 50], out = new Map();
+  const walk = (list, from) => {
+    if (list.length) {
+      const total = list.reduce((a, b) => a + b, 0);
+      if (!out.has(total)) {
+        out.set(total, { frames: list.map(f => f / 100), w: total / 100, d: 0.58, name: list.length === 1 ? 'PAX wardrobe frame' : `PAX wardrobe, ${list.length} frames (${list.join(' + ')} cm)`, size: `${total} × 58 cm` });
+      }
+    }
+    if (list.length < 3) { frames.slice(from).forEach((f, i) => walk([...list, f], from + i)); }
+  };
+  walk([], 0);
+  return [...out.values()];
+})();
+// METOD base cabinets are 20, 30, 40, 60 or 80 cm wide; use as many 60 cm ones as possible, then the fewest others
+function metodCabinets(widthCm) {
+  const rest = [80, 40, 30, 20], best = [[]];
+  for (let total = 1; total <= widthCm; total++) {
+    best[total] = null;
+    for (const c of rest) {
+      const prev = total >= c ? best[total - c] : null;
+      if (prev && (!best[total] || prev.length + 1 < best[total].length)) { best[total] = [...prev, c]; }
+    }
+  }
+  for (let sixties = Math.floor(widthCm / 60); sixties >= 0; sixties--) {
+    const others = best[widthCm - sixties * 60];
+    if (others) { return [...Array(sixties).fill(60), ...others]; }
+  }
+  return null;
+}
+const metodLabel = parts => {
+  const counts = new Map();
+  parts.slice().sort((a, b) => b - a).forEach(p => counts.set(p, (counts.get(p) || 0) + 1));
+  return [...counts].map(([p, k]) => (k > 1 ? `${k} × ${p}` : `${p}`)).join(' + ') + ' cm';
+};
+// matches a kitchen run built from METOD cabinets: 63.5 cm deep worktop, or a 90 cm deep island with a seating overhang
+const metodMatch = island => (w, d) => {
+  const cm = Math.round(w * 100);
+  if (Math.abs(w * 100 - cm) > 1.1 || cm % 10 || cm < 20 || cm > 600 || Math.abs(d - (island ? 0.9 : 0.635)) > 0.011) { return null; }
+  const parts = metodCabinets(cm);
+  return parts && { name: `METOD base cabinets ${metodLabel(parts)}${island ? ', with seating overhang' : ''}` };
+};
 const ROOM_TYPES = {
   room: { label: 'Room', w: 4, d: 3.5, kind: 'room' },
   door: { label: 'Door', w: 0.8, d: 0.4, kind: 'door' },
   window: { label: 'Window', w: 1.2, d: 0.4, kind: 'window' },
-  sofa: { label: 'Sofa', w: 2.28, d: 0.95, kind: 'furn', glyph: 'sofa' },
+  sofa: { label: 'Sofa', w: 2.28, d: 0.95, kind: 'furn', glyph: 'sofa', ikea: [{ w: 2.28, d: 0.95, name: 'KIVIK 3-seat sofa', size: '228 × 95 cm' }, { w: 1.9, d: 0.95, name: 'KIVIK 2-seat sofa', size: '190 × 95 cm' }] },
+  sofaL: { label: 'Corner sofa', w: 2.57, d: 1.95, kind: 'furn', glyph: 'sofaL', lshape: [0.95, 0.95] },
+  chaise: { label: 'Sofa with chaise', w: 2.8, d: 1.63, kind: 'furn', glyph: 'chaise', lshape: [0.95, 0.95], ikea: [{ w: 2.8, d: 1.63, name: 'KIVIK 3-seat sofa with chaise longue', size: '280 × 163 cm' }] },
   armchair: { label: 'Armchair', w: 0.85, d: 0.85, kind: 'furn', glyph: 'sofa' },
-  coffee: { label: 'Coffee table', w: 0.9, d: 0.55, kind: 'furn', glyph: 'table' },
-  dining: { label: 'Dining table', w: 1.4, d: 0.85, kind: 'furn', glyph: 'table' },
+  coffee: { label: 'Coffee table', w: 0.9, d: 0.55, kind: 'furn', glyph: 'table', ikea: [{ w: 0.9, d: 0.55, name: 'LACK coffee table', size: '90 × 55 cm' }] },
+  dining: { label: 'Dining table', w: 1.4, d: 0.85, kind: 'furn', glyph: 'table', ikea: [{ w: 1.4, d: 0.85, name: 'MÖRBYLÅNGA table', size: '140 × 85 cm' }] },
+  roundtable: { label: 'Round dining table', w: 1.03, d: 1.03, kind: 'furn', glyph: 'roundtable', note: 'Ø 1.03 m', ikea: [{ w: 1.03, d: 1.03, name: 'DOCKSTA table', size: 'Ø 103 cm' }] },
+  fireplace: { label: 'Fireplace', w: 1.2, d: 0.6, kind: 'furn', glyph: 'fireplace' },
+  island: { label: 'Kitchen island', w: 1.8, d: 0.9, kind: 'furn', glyph: 'island', ikea: metodMatch(true) },
   chair: { label: 'Chair', w: 0.45, d: 0.5, kind: 'furn', glyph: 'chair' },
   bed2: { label: 'Double bed', w: 1.7, d: 2.1, kind: 'furn', glyph: 'bed2' },
   bed1: { label: 'Single bed', w: 1, d: 2.1, kind: 'furn', glyph: 'bed1' },
-  wardrobe: { label: 'Wardrobe', w: 1, d: 0.6, kind: 'furn', glyph: 'wardrobe' },
+  wardrobe: { label: 'Wardrobe', w: 1.2, d: 0.6, kind: 'furn', glyph: 'wardrobe' },
+  pax: { label: 'PAX closet', w: 1, d: 0.58, kind: 'furn', glyph: 'pax', ikea: PAX_SIZES },
   desk: { label: 'Desk', w: 1.2, d: 0.6, kind: 'furn', glyph: 'desk' },
-  tv: { label: 'TV unit', w: 1.8, d: 0.42, kind: 'furn', glyph: 'tv' },
-  counter: { label: 'Kitchen counter', w: 2.4, d: 0.6, kind: 'furn', glyph: 'counter' },
+  tv: { label: 'TV unit', w: 1.8, d: 0.42, kind: 'furn', glyph: 'tv', ikea: [{ w: 1.8, d: 0.42, name: 'BESTÅ TV bench', size: '180 × 42 cm' }] },
+  counter: { label: 'Kitchen counter', w: 2.4, d: 0.635, kind: 'furn', glyph: 'counter', ikea: metodMatch(false) },
   fridge: { label: 'Fridge', w: 0.6, d: 0.65, kind: 'furn', glyph: 'fridge' },
   toilet: { label: 'Wall-hung toilet', w: 0.38, d: 0.55, kind: 'furn', glyph: 'toilet' },
   basin: { label: 'Washbasin', w: 0.6, d: 0.45, kind: 'furn', glyph: 'basin' },
@@ -545,8 +612,9 @@ const ROOM_PRESETS = [
   { group: 'Doors & windows', type: 'window', label: 'Small window', w: 0.6 },
   { group: 'Doors & windows', type: 'window', label: 'Window', w: 1.2 },
   { group: 'Doors & windows', type: 'window', label: 'Large window', w: 2.4 },
-  ...['sofa', 'armchair', 'coffee', 'dining', 'chair', 'bed2', 'bed1', 'wardrobe', 'desk', 'tv', 'counter', 'fridge', 'toilet', 'basin', 'shower', 'bath', 'washer']
-    .map(t => ({ group: 'Furniture', type: t, label: ROOM_TYPES[t].label })),
+  ...['sofa', 'sofaL', 'chaise', 'armchair', 'coffee', 'dining', 'roundtable', 'chair', 'bed2', 'bed1', 'wardrobe', 'pax', 'desk', 'tv', 'fireplace',
+    'counter', 'island', 'fridge', 'toilet', 'basin', 'shower', 'bath', 'washer']
+    .map(t => ({ group: 'Furniture', type: t, label: ROOM_TYPES[t].label, note: ROOM_TYPES[t].note })),
 ];
 const KEY = 'plot-planner.v1';
 
@@ -655,6 +723,8 @@ function polysOverlap(A0, B0) {
 
 // shapes: o.pts are corners relative to (o.x, o.y), turned by o.rot
 const rectPts = (w, d) => [[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2]];
+const lSofaPts = (w, d, a, c) => [[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [w / 2 - c, d / 2], [w / 2 - c, -d / 2 + a], [-w / 2, -d / 2 + a]];
+const shapePts = (T, w, d) => (T.lshape ? lSofaPts(w, d, ...T.lshape) : rectPts(w, d));
 const L_PTS = [[-7, -6], [7, -6], [7, 1], [1, 1], [1, 6], [-7, 6]];
 const corners = o => o.pts.map(p => add([o.x, o.y], rotV(p, o.rot)));
 const toLocal = (o, w) => rotV(sub(w, [o.x, o.y]), -o.rot);
@@ -995,9 +1065,8 @@ function applyMode() {
   document.querySelector('.app').classList.toggle('room-mode', !!h);
   $('#brand-sub').textContent = h ? `Room planner · ${h.name}` : 'Site plan · 1 square = 1 m';
   $('#add-title').textContent = h ? 'Add to the building' : 'Add to plan';
-  $('#list-title').textContent = h ? 'In this building' : 'On this page';
   renderPresets();
-  $('#f-type').innerHTML = Object.entries(TYPES).filter(([, t]) => !!t.kind === !!h).map(([k, t]) => `<option value="${k}">${t.label}</option>`).join('');
+  $('#f-type').innerHTML = Object.entries(TYPES).filter(([, t]) => (h ? !!t.kind && t.kind !== 'car' : !t.kind || t.kind === 'car')).map(([k, t]) => `<option value="${k}">${t.label}</option>`).join('');
 }
 
 let presetList = PRESETS;
@@ -1121,6 +1190,36 @@ function glyph(o) {
   };
   switch (T.glyph || T.kind) {
     case 'sofa': return seating(w < 1.2 ? 1 : w < 2.6 ? 2 : 3);
+    case 'sofaL':
+    case 'chaise': {
+      const P = o.pts;
+      if (P.length !== 6) { return seating(2); }
+      // a = depth of the long part, c = width of the leg; both follow the walls if they are dragged
+      const a = P[5][1] - P[0][1], c = P[2][0] - P[3][0], back = 0.2, arm = 0.16, gap = 0.03, cut = x1 - c;
+      const row = (from, to, fixed, size, vertical) => {
+        const len = to - from, k = len < 1.2 ? 1 : 2, piece = (len - (k - 1) * gap) / k;
+        let r = '';
+        for (let i = 0; i < k; i++) {
+          const at = from + i * (piece + gap);
+          r += vertical ? R(fixed, at, size, piece, 0.07, 'g-light') : R(at, fixed, piece, size, 0.07, 'g-light');
+        }
+        return r;
+      };
+      let out = `<path class="g-base" d="M${P.map(p => `${n(p[0])} ${n(p[1])}`).join('L')}Z"/>` +
+        R(x0 + 0.03, y0 + 0.03, w - 0.06, back, 0.08, 'g-soft') + R(x0 + 0.02, y0 + 0.08, arm, a - 0.1, 0.07, 'g-soft') +
+        row(x0 + arm + 0.04, cut, y0 + back + 0.05, a - back - 0.09, false);
+      if (T.glyph === 'sofaL') {
+        // backs along both outer sides, a corner seat and seats down the leg
+        out += R(x1 - back - 0.03, y0 + 0.03, back, d - 0.06, 0.08, 'g-soft') + R(cut + 0.02, y1 - arm - 0.02, c - 0.04, arm, 0.07, 'g-soft') +
+          R(cut + 0.02, y0 + back + 0.05, c - back - 0.09, a - back - 0.09, 0.07, 'g-light') +
+          row(y0 + a + 0.02, y1 - arm - 0.04, cut + 0.02, c - back - 0.09, true);
+      } else {
+        // chaise: armrest on the outer side and one long cushion to lie on
+        out += R(x1 - arm - 0.02, y0 + 0.08, arm, d - 0.1, 0.07, 'g-soft') +
+          R(cut + 0.02, y0 + back + 0.05, c - arm - 0.07, d - back - 0.1, 0.08, 'g-light');
+      }
+      return out;
+    }
     case 'chair':
       // rounded seat with a curved backrest
       return R(x0 + 0.03, y0 + 0.07, w - 0.06, d - 0.08, 0.09, 'g-soft') + R(x0 + 0.08, y0 + 0.15, w - 0.16, d - 0.22, 0.06, 'g-light') +
@@ -1128,10 +1227,43 @@ function glyph(o) {
     case 'bed2': return bed(2);
     case 'bed1': return bed(1);
     case 'table': return R(x0, y0, w, d, 0.06, 'g-base') + R(x0 + 0.06, y0 + 0.06, w - 0.12, d - 0.12, 0.04, 'g-line');
+    case 'roundtable': return E(cx, cy, w / 2, d / 2, 'g-base') + E(cx, cy, w / 2 - 0.06, d / 2 - 0.06, 'g-line');
+    case 'fireplace':
+      // surround against the wall, flue at the back, firebox opening at the front
+      return R(x0, y0, w, d, 0.03, 'g-base') + C(cx, y0 + Math.min(0.15, d * 0.25), Math.min(0.09, w * 0.1), 'g-line') +
+        R(x0 + w * 0.18, y1 - Math.min(0.32, d * 0.55), w * 0.64, Math.min(0.28, d * 0.5), 0.03, 'g-firebox') +
+        E(cx, y1 - Math.min(0.18, d * 0.3), w * 0.13, Math.min(0.08, d * 0.13), 'g-fire') +
+        L(x0 - 0.05, y1 + 0.02, x1 + 0.05, y1 + 0.02);
+    case 'island': {
+      // worktop with a hob; the dashed part on one side is the overhang for bar stools
+      const over = Math.min(0.3, d * 0.33);
+      let out = R(x0, y0, w, d, 0.03, 'g-base') + `<line class="g-faint" stroke-dasharray="4 3" x1="${n(x0 + 0.03)}" y1="${n(y1 - over)}" x2="${n(x1 - 0.03)}" y2="${n(y1 - over)}"/>`;
+      if (w > 1.1) {
+        for (const hx of [x0 + 0.3, x0 + 0.58]) { for (const hy of [y0 + (d - over) * 0.3, y0 + (d - over) * 0.72]) { out += C(hx, hy, 0.09, 'g-line'); } }
+      }
+      return out;
+    }
     case 'desk':
       return R(x0, y0, w, d, 0.03, 'g-base') + R(cx - Math.min(0.3, w * 0.3), y0 + 0.07, Math.min(0.6, w * 0.6), 0.04, 0.01, 'g-dark') +
         R(cx - 0.2, y0 + d * 0.45, 0.4, 0.13, 0.02, 'g-light');
     case 'tv': return R(x0, y0, w, d, 0.03, 'g-base') + R(cx - w * 0.36, y0 + 0.05, w * 0.72, 0.05, 0.01, 'g-dark');
+    case 'pax': {
+      // sections follow the matching PAX frames; other widths are split every metre
+      const found = ikeaMatch(o), match = found && Math.abs(found.w - w) < 0.011 ? found : null, parts = match ? match.frames.slice() : [];
+      if (!match) {
+        let rest = w;
+        while (rest > 1.01) { parts.push(1); rest -= 1; }
+        parts.push(rest);
+      }
+      let out = R(x0, y0, w, d, 0.02, 'g-base') + L(x0, y1 - 0.04, x1, y1 - 0.04), at = x0;
+      parts.forEach((pw, i) => {
+        if (i) { out += L(at, y0, at, y1); }
+        out += L(at + 0.05, cy, at + pw - 0.05, cy) + L(at + pw / 2, y1 - 0.04, at + pw / 2, y1);
+        for (let x = at + 0.12; x < at + pw - 0.08; x += 0.12) { out += L(x, cy - d * 0.3, x + 0.04, cy + d * 0.3); }
+        at += pw;
+      });
+      return out;
+    }
     case 'wardrobe': {
       let out = R(x0, y0, w, d, 0.02, 'g-base') + L(x0 + 0.05, cy, x1 - 0.05, cy) + L(x0, y1 - 0.04, x1, y1 - 0.04);
       for (let x = x0 + 0.12; x < x1 - 0.08; x += 0.12) { out += L(x, cy - d * 0.3, x + 0.04, cy + d * 0.3); }
@@ -1169,6 +1301,28 @@ function glyph(o) {
       return L(hx, y1, hx, y1 + w, 'leaf') + `<path class="swing" d="M${n(hx)} ${n(y1 + w)} A${n(w)} ${n(w)} 0 0 ${o.mirror ? 1 : 0} ${n(ex)} ${n(y1)}"/>`;
     }
     case 'window': return L(x0, y0 + d * 0.35, x1, y0 + d * 0.35, 'pane') + L(x0, y0 + d * 0.65, x1, y0 + d * 0.65, 'pane');
+    case 'car': {
+      const bw = Math.min(T.body || w, w), bx = cx - bw / 2, paint = `style="fill:${T.color}"`;
+      const at = f => y0 + d * f, trap = (ya, yb, wa, wb, cls) =>
+        `<path class="${cls}" d="M${n(cx - wa / 2)} ${n(ya)}L${n(cx + wa / 2)} ${n(ya)}L${n(cx + wb / 2)} ${n(yb)}L${n(cx - wb / 2)} ${n(yb)}Z"/>`;
+      let out = `<rect ${paint} x="${n(bx)}" y="${n(y0)}" width="${n(bw)}" height="${n(d)}" rx="${n(bw * 0.2)}"/>` +
+        `<rect ${paint} x="${n(bx - (w - bw) / 2)}" y="${n(at(0.27))}" width="${n((w - bw) / 2 + 0.05)}" height="0.12" rx="0.04"/>` +
+        `<rect ${paint} x="${n(bx + bw - 0.05)}" y="${n(at(0.27))}" width="${n((w - bw) / 2 + 0.05)}" height="0.12" rx="0.04"/>` +
+        R(bx + 0.12, y0 + 0.04, 0.32, 0.07, 0.03, 'g-head') + R(bx + bw - 0.44, y0 + 0.04, 0.32, 0.07, 0.03, 'g-head') +
+        R(bx + 0.1, y1 - 0.09, 0.3, 0.05, 0.02, 'g-tail') + R(bx + bw - 0.4, y1 - 0.09, 0.3, 0.05, 0.02, 'g-tail') +
+        L(cx, y0 + 0.08, cx, at(0.24));
+      if (T.roof === 'glass') {
+        // Model Y: windscreen and glass roof run as one dark surface towards the tailgate
+        out += `<path class="g-glass" d="M${n(cx - bw * 0.39)} ${n(at(0.26))}Q${n(cx)} ${n(at(0.23))} ${n(cx + bw * 0.39)} ${n(at(0.26))}L${n(cx + bw * 0.4)} ${n(at(0.84))}Q${n(cx)} ${n(at(0.87))} ${n(cx - bw * 0.4)} ${n(at(0.84))}Z"/>` +
+          L(cx - bw * 0.42, at(0.42), cx + bw * 0.42, at(0.42), 'g-faint');
+      } else {
+        // wagon: windscreen, painted roof that runs almost to the back, small rear window
+        out += trap(at(0.25), at(0.37), bw * 0.74, bw * 0.84, 'g-glass') +
+          `<rect ${paint} x="${n(cx - bw * 0.41)}" y="${n(at(0.37))}" width="${n(bw * 0.82)}" height="${n(d * 0.48)}" rx="0.06"/>` +
+          trap(at(0.85), at(0.9), bw * 0.82, bw * 0.74, 'g-glass');
+      }
+      return out;
+    }
     default: return R(x0, y0, w, d, 0.04, 'g-base');
   }
 }
@@ -1176,8 +1330,8 @@ function glyph(o) {
 // small picture of a piece for the side panel
 function pieceIcon(type, w, d, size) {
   const T = TYPES[type];
-  if (!T || !['furn', 'door', 'window'].includes(T.kind)) { return ''; }
-  const o = { type, x: 0, y: 0, rot: 0, pts: rectPts(w || T.w, d || T.d) }, b = bbox(o.pts);
+  if (!T || !['furn', 'door', 'window', 'car'].includes(T.kind)) { return ''; }
+  const o = { type, x: 0, y: 0, rot: 0, pts: shapePts(T, w || T.w, d || T.d) }, b = bbox(o.pts);
   let body = glyph(o), y1 = b.y1;
   if (T.kind === 'door') {
     body = `<rect class="g-base" x="${b.x0 - 0.25}" y="${b.y0}" width="0.25" height="${b.h}"/><rect class="g-base" x="${b.x1}" y="${b.y0}" width="0.25" height="${b.h}"/>` + body;
@@ -1188,6 +1342,31 @@ function pieceIcon(type, w, d, size) {
   const side = Math.max(wv, hv);
   return `<svg class="ico glyph" width="${size}" height="${size}" viewBox="${(x0 - (side - wv) / 2).toFixed(3)} ${(b.y0 - pad - (side - hv) / 2).toFixed(3)} ${side.toFixed(3)} ${side.toFixed(3)}" aria-hidden="true">${body}</svg>`;
 }
+
+// the IKEA product a piece matches by size, either way round, within 1 cm
+function ikeaMatch(o) {
+  const list = (TYPES[o.type] || {}).ikea;
+  if (!list) { return null; }
+  const { w, d } = objSize(o), near = (a, b) => Math.abs(a - b) < 0.011;
+  if (typeof list === 'function') { return list(w, d) || list(d, w); }
+  return list.find(m => (near(w, m.w) && near(d, m.d)) || (near(w, m.d) && near(d, m.w))) || null;
+}
+// hovering an item in the side panel shows the IKEA product it is sized after
+const tip = $('#tip');
+$('#presets').addEventListener('pointermove', e => {
+  const b = e.target.closest('[data-preset]'), p = b && presetList[+b.dataset.preset], T = p && TYPES[p.type];
+  const m = T && ikeaMatch({ type: p.type, pts: shapePts(T, p.w || T.w, p.d || T.d) });
+  if (e.pointerType !== 'mouse' || !m) {
+    tip.hidden = true;
+    return;
+  }
+  tip.innerHTML = `<b>IKEA ${esc(m.name)}</b>`;
+  tip.hidden = false;
+  tip.style.left = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 6) + 'px';
+  tip.style.top = Math.min(e.clientY + 18, innerHeight - tip.offsetHeight - 6) + 'px';
+});
+$('#presets').addEventListener('pointerleave', () => { tip.hidden = true; });
+$('#presets').addEventListener('click', () => { tip.hidden = true; });
 
 // right-click (or press and hold) menu
 const menu = $('#ctxmenu');
@@ -1291,7 +1470,7 @@ function render() {
     for (const [a, b] of edges(plot)) { h += edgeLabel(plot, a, b, 'edge-lbl', 14, `${dist(a, b).toFixed(1)} m`); }
   }
 
-  const LAYER = { room: 0, plot: 1, furn: 1, door: 2, window: 2 }, roomFloor = rh ? innerOutline() : null;
+  const LAYER = { room: 0, plot: 1, furn: 1, car: 2, door: 2, window: 2 }, roomFloor = rh ? innerOutline() : null;
   const statuses = new Map(items().map(o => [o.id, objStatus(o)]));
   for (const o of items().slice().sort((a, b) => LAYER[kindOf(a)] - LAYER[kindOf(b)])) {
     const st = statuses.get(o.id), C = corners(o), c = S(polyCentroid(C)), sz = objSize(o), kind = kindOf(o);
@@ -1300,7 +1479,7 @@ function render() {
       const d = innerWalls(C, roomFloor).map(([a, b]) => `M${S(a).map(f).join(' ')}L${S(b).map(f).join(' ')}`).join('');
       if (d) { h += `<path class="room-wall" d="${d}" style="stroke-width:${Math.max(1.5, 0.12 * k).toFixed(1)}px"/>`; }
     }
-    if (kind === 'furn' || kind === 'door' || kind === 'window') {
+    if (kind === 'furn' || kind === 'door' || kind === 'window' || kind === 'car') {
       const sc = S([o.x, o.y]);
       h += `<g class="glyph" transform="translate(${f(sc[0])} ${f(sc[1])}) rotate(${o.rot}) scale(${k.toFixed(3)})">${glyph(o)}</g>`;
     }
@@ -1353,7 +1532,12 @@ function render() {
       if (state.showDims) {
         for (const other of items()) {
           if (other === so) { continue; }
-          const r = polyPolyClosest(C, corners(other));
+          const OC = corners(other);
+          if (C.every(p => pointInPoly(p, OC))) {
+            for (const [a, b] of edges(OC)) { h += dimLine(polySegClosest(C, a, b), 'between'); }
+            continue;
+          }
+          const r = polyPolyClosest(C, OC);
           if (r.d > 0.05 && r.d < 25) { h += dimLine(r, 'between'); }
         }
       }
@@ -1433,7 +1617,8 @@ function updateRoomSummary(rh, statuses) {
 function updatePlotSummary(statuses) {
   const plotA = Math.abs(polyArea(state.plot));
   const base = state.officialArea > 0 ? state.officialArea : plotA;
-  const b = unionArea(cur().objects.filter(o => o.building)), all = unionArea(cur().objects);
+  const solid = cur().objects.filter(o => kindOf(o) !== 'car');
+  const b = unionArea(solid.filter(o => o.building)), all = unionArea(solid);
   const other = Math.max(0, all.a - b.a), free = Math.max(0, base - all.a);
   $('#s-plot').innerHTML = `${fmtA(base)} m²<small>${state.officialArea > 0 ? `official · drawn ${fmtA(plotA)} m²` : `${(plotA / 100).toFixed(2)} a, drawn`}</small>`;
   $('#s-cov').innerHTML = `${(b.a / base * 100).toFixed(1)} %<small>of the plot is built on</small>`;
@@ -1452,11 +1637,6 @@ function updatePlotSummary(statuses) {
   w.textContent = [outN && `${outN} outside the plot`, warnN && `${warnN} closer than ${fmt(state.setback)} m to the border`].filter(Boolean).join(' · ');
 }
 function updateListAndSelection(statuses, rh) {
-  $('#list').innerHTML = items().length ? items().map(o => {
-    const st = statuses.get(o.id), sz = objSize(o);
-    const dm = isOpening(o) ? `${fmt(sz.w)} m wide` : `${isRect(o) ? `${fmt(sz.w)}×${fmt(sz.d)} · ` : ''}${fmt(objArea(o).toFixed(1))} m²`;
-    return `<button type="button" class="item${o.id === ui.sel ? ' on' : ''}" data-id="${esc(o.id)}">${pieceIcon(o.type, objSize(o).w, objSize(o).d, 20) || `<span class="sw t-${o.type} k-${kindOf(o)}"></span>`}<span class="nm">${esc(o.name)}</span><span class="dm">${dm}</span><span class="chip ${st.level}">${STATUS_TEXT[st.level]}</span></button>`;
-  }).join('') : rh ? '<p class="empty">Nothing here yet. Add rooms, doors, windows or furniture above.</p>' : '<p class="empty">Nothing on the plot yet. Add a house or a carport above.</p>';
 
   const so = selObj();
   $('#sel-sec').hidden = !so;
@@ -1694,7 +1874,7 @@ function addObject(preset) {
   mutate(() => {
     const o = {
       id: uid(), type: preset.type, name: nextName(preset.label), x: r3(c[0]), y: r3(c[1]), rot, building: !!T.building,
-      pts: preset.shape === 'L' ? clone(L_PTS) : rectPts(w, d),
+      pts: preset.shape === 'L' ? clone(L_PTS) : shapePts(T, w, d),
     };
     pushItem(o);
     if (h && isOpening(o)) { snapOpening(o, c, true); }
@@ -1704,12 +1884,6 @@ function addObject(preset) {
 }
 $('#presets').addEventListener('click', e => { const b = e.target.closest('[data-preset]'); if (b) { addObject(presetList[+b.dataset.preset]); } });
 
-$('#list').addEventListener('click', e => {
-  const b = e.target.closest('[data-id]');
-  if (!b) { return; }
-  ui.sel = b.dataset.id;
-  if (ui.tool !== 'select') { setTool('select'); } else { render(); }
-});
 
 function bindForm(form, apply) {
   form.addEventListener('submit', e => e.preventDefault());
