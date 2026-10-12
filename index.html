@@ -1,0 +1,1245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Plot Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: drafting table — toolbar on top, to-scale site canvas, side panel with numbers and objects */
+:root {
+  --paper: #eceee7;
+  --panel: #f7f8f4;
+  --ink: #1c2425;
+  --muted: #5d6966;
+  --rule: #d2d7cf;
+  --land: #dbe5cc;
+  --grid: rgba(40, 62, 50, .07);
+  --grid-major: rgba(40, 62, 50, .16);
+  --boundary: #c23b31;
+  --accent: #cf6416;
+  --accent-soft: rgba(207, 100, 22, .12);
+  --ok: #2d7a4c;
+  --warn: #a8700f;
+  --bad: #c23b31;
+  --c-house: #3d5b6d;
+  --c-carport: #876738;
+  --c-garage: #575b8c;
+  --c-shed: #5b8163;
+  --c-terrace: #b38f57;
+  --c-driveway: #8d918b;
+  --c-pool: #3f93b4;
+  --c-custom: #786f62;
+  --f-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --f-body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #141a1a; --panel: #1a2121; --ink: #e2e8e3; --muted: #97a39f; --rule: #2b3535;
+    --land: #223029; --grid: rgba(215, 235, 222, .05); --grid-major: rgba(215, 235, 222, .12);
+    --boundary: #f0675b; --accent: #f08a3c; --accent-soft: rgba(240, 138, 60, .14);
+    --ok: #5cbf83; --warn: #e0a83e; --bad: #f0675b;
+    --c-house: #557c92; --c-carport: #977443; --c-garage: #686ca6; --c-shed: #64906d;
+    --c-terrace: #9c7d4c; --c-driveway: #6e736e; --c-pool: #3b88a6; --c-custom: #7c7366;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #141a1a; --panel: #1a2121; --ink: #e2e8e3; --muted: #97a39f; --rule: #2b3535;
+  --land: #223029; --grid: rgba(215, 235, 222, .05); --grid-major: rgba(215, 235, 222, .12);
+  --boundary: #f0675b; --accent: #f08a3c; --accent-soft: rgba(240, 138, 60, .14);
+  --ok: #5cbf83; --warn: #e0a83e; --bad: #f0675b;
+  --c-house: #557c92; --c-carport: #977443; --c-garage: #686ca6; --c-shed: #64906d;
+  --c-terrace: #9c7d4c; --c-driveway: #6e736e; --c-pool: #3b88a6; --c-custom: #7c7366;
+  color-scheme: dark;
+}
+
+html, body { height: 100%; }
+body { margin: 0; }
+[hidden] { display: none !important; }
+body { background: var(--paper); color: var(--ink); font: 15px/1.45 var(--f-body); }
+* { box-sizing: border-box; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.app {
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  padding-block: 12px;
+  padding-inline: 16px;
+}
+.top { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+.brand { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.brand h1 { margin: 0; font: 700 26px/1 var(--f-display); letter-spacing: .02em; text-transform: uppercase; }
+.brand .sub { color: var(--muted); font: 500 13px var(--f-display); letter-spacing: .08em; text-transform: uppercase; }
+
+.tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tools .sep { width: 1px; height: 22px; background: var(--rule); margin-inline: 4px; }
+.btn {
+  border: 1px solid var(--rule); background: var(--panel); border-radius: 6px;
+  padding: 6px 12px; cursor: pointer; font: 600 14px var(--f-display); letter-spacing: .05em; text-transform: uppercase;
+  min-height: 34px;
+}
+.btn:hover { border-color: var(--muted); }
+.btn[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.btn:disabled { opacity: .4; cursor: default; }
+.btn.icon { min-width: 34px; padding-inline: 8px; }
+.btn.danger { color: var(--bad); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.stage { position: relative; min-height: 0; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; background: var(--paper); }
+#cv { display: block; width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; }
+#cv.tool-measure { cursor: crosshair; }
+.hint {
+  position: absolute; left: 10px; bottom: 10px; right: 120px; pointer-events: none;
+  font: 500 13px var(--f-display); letter-spacing: .03em; color: var(--muted);
+}
+.hint span { background: var(--paper); padding: 2px 6px; border-radius: 4px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+
+/* canvas */
+.grid { stroke: var(--grid); stroke-width: 1; fill: none; }
+.grid.major { stroke: var(--grid-major); }
+.land { fill: var(--land); }
+.setback { fill: url(#hatch); pointer-events: none; }
+.hatch-line { stroke: var(--boundary); stroke-opacity: .22; stroke-width: 1.5; }
+.setback-line { fill: none; stroke: var(--boundary); stroke-opacity: .6; stroke-dasharray: 5 4; stroke-width: 1; pointer-events: none; }
+.boundary { fill: none; stroke: var(--boundary); stroke-width: 2.5; stroke-linejoin: round; pointer-events: none; }
+.vtx { fill: var(--paper); stroke: var(--boundary); stroke-width: 1.5; pointer-events: none; }
+.vtx.big { stroke-width: 2.5; }
+.lbl {
+  font: 600 12.5px var(--f-display); letter-spacing: .03em; paint-order: stroke; stroke: var(--paper);
+  stroke-width: 3.5px; stroke-linejoin: round; text-anchor: middle; dominant-baseline: middle; pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+.edge-lbl { fill: var(--ink); }
+.obj { cursor: move; }
+.obj polygon { fill: var(--c); fill-opacity: .9; stroke: rgba(0, 0, 0, .35); stroke-width: 1; }
+.obj.st-warn polygon { stroke: var(--warn); stroke-width: 2.5; stroke-dasharray: 7 4; }
+.obj.st-out polygon { stroke: var(--bad); stroke-width: 3; }
+.obj.sel polygon { stroke: var(--accent); stroke-width: 3; stroke-dasharray: none; }
+.obj text { pointer-events: none; fill: #fff; font-family: var(--f-display); text-anchor: middle; dominant-baseline: middle; }
+.o-name { font-weight: 700; font-size: 14px; letter-spacing: .04em; text-transform: uppercase; }
+.o-dim { font-weight: 500; font-size: 12.5px; opacity: .92; font-variant-numeric: tabular-nums; }
+.dim-line { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 3; pointer-events: none; }
+.dim-line.bad { stroke: var(--bad); }
+.dim-line.between { stroke: var(--muted); }
+.dim-end { fill: var(--accent); pointer-events: none; }
+.dim-end.bad { fill: var(--bad); }
+.dim-end.between { fill: var(--muted); }
+.dim-lbl { fill: var(--accent); }
+.dim-lbl.bad { fill: var(--bad); }
+.dim-lbl.between { fill: var(--muted); }
+.hit { fill: transparent; cursor: pointer; }
+.hit.rot { cursor: grab; }
+.handle { fill: var(--paper); stroke: var(--accent); stroke-width: 2; pointer-events: none; }
+.rot-line { stroke: var(--accent); stroke-width: 1.5; pointer-events: none; }
+.handle.wall { fill: var(--accent); stroke: var(--paper); stroke-width: 1.5; }
+.hit.wall { cursor: grab; }
+.hit.vtx-h { cursor: crosshair; }
+.wall-lbl { fill: var(--ink); font-size: 13px; }
+.hi-wall { stroke: var(--accent); stroke-width: 5; stroke-linecap: round; pointer-events: none; opacity: .75; }
+.pv-hit { fill: transparent; cursor: move; }
+.m-line { stroke: var(--ink); stroke-width: 1.75; pointer-events: none; }
+.m-end { fill: var(--ink); pointer-events: none; }
+.m-lbl { fill: var(--ink); font-size: 14px; }
+.ov { fill: var(--ink); }
+.ov-line { stroke: var(--ink); stroke-width: 2; fill: none; }
+.ov-text { font: 600 11px var(--f-display); fill: var(--muted); letter-spacing: .12em; text-anchor: middle; }
+
+.t-house { --c: var(--c-house); } .t-carport { --c: var(--c-carport); } .t-garage { --c: var(--c-garage); }
+.t-shed { --c: var(--c-shed); } .t-terrace { --c: var(--c-terrace); } .t-driveway { --c: var(--c-driveway); }
+.t-pool { --c: var(--c-pool); } .t-custom { --c: var(--c-custom); } .t-parking { --c: var(--c-driveway); }
+
+/* panel */
+.panel { min-height: 0; overflow-y: auto; background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; }
+.panel section { padding: 14px 16px; border-bottom: 1px solid var(--rule); display: grid; gap: 10px; }
+.panel section:last-child { border-bottom: 0; }
+.panel h2 { margin: 0; font: 700 13px var(--f-display); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin: 0; }
+.stats div { min-width: 0; }
+.stats dt { font: 600 12px var(--f-display); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.stats dd { margin: 0; font: 600 24px/1.1 var(--f-display); font-variant-numeric: tabular-nums; }
+.stats dd small { display: block; font: 400 12px var(--f-body); color: var(--muted); }
+.covbar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--land); border: 1px solid var(--rule); }
+.covbar span { display: block; height: 100%; }
+#bar-b { background: var(--c-house); }
+#bar-o { background: var(--c-terrace); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.note { margin: 0; font-size: 13px; color: var(--muted); }
+.note.example { background: var(--accent-soft); color: var(--ink); padding: 8px 10px; border-radius: 6px; }
+.warnline { margin: 0; font-size: 13px; font-weight: 600; color: var(--warn); }
+.warnline.bad { color: var(--bad); }
+
+.presets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.preset {
+  display: flex; align-items: center; gap: 8px; text-align: left; padding: 7px 9px; cursor: pointer;
+  border: 1px solid var(--rule); border-radius: 6px; background: var(--paper);
+}
+.preset:hover { border-color: var(--muted); }
+.preset b { font: 600 14px var(--f-display); letter-spacing: .04em; text-transform: uppercase; display: block; }
+.preset small { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.sw { width: 14px; height: 14px; border-radius: 3px; background: var(--c); flex: none; }
+
+.fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.field { display: grid; gap: 3px; min-width: 0; }
+.field.wide { grid-column: 1 / -1; }
+.field.half { grid-column: span 2; }
+.field label, .check { font: 600 12px var(--f-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.field input, .field select, textarea {
+  width: 100%; min-width: 0; padding: 6px 8px; border: 1px solid var(--rule); border-radius: 5px; background: var(--paper);
+  font-variant-numeric: tabular-nums;
+}
+.check { display: flex; align-items: center; gap: 8px; cursor: pointer; text-transform: none; letter-spacing: .02em; font-size: 14px; color: var(--ink); }
+.check input { width: 16px; height: 16px; accent-color: var(--accent); }
+.row-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.row-btns .btn { font-size: 13px; padding: 5px 10px; min-height: 30px; }
+#f-status { margin: 0; font-size: 13px; }
+.walls { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; padding-top: 4px; }
+.walls-h { grid-column: 1 / -1; margin: 0; font-size: 13px; color: var(--muted); }
+.wall-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px; font: 600 12px var(--f-display); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.wall-row input { width: 100%; min-width: 0; padding: 4px 6px; border: 1px solid var(--rule); border-radius: 5px; background: var(--paper); font: 13px var(--f-mono); }
+
+.list { display: grid; gap: 4px; }
+.item {
+  display: grid; grid-template-columns: 14px minmax(0, 1fr) auto auto; align-items: center; gap: 8px;
+  padding: 6px 8px; border: 1px solid transparent; border-radius: 6px; background: none; cursor: pointer; text-align: left; width: 100%;
+}
+.item:hover { background: var(--paper); }
+.item.on { border-color: var(--accent); background: var(--accent-soft); }
+.item .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.item .dm { font: 12.5px var(--f-mono); color: var(--muted); }
+.chip { font: 600 11px var(--f-display); letter-spacing: .08em; text-transform: uppercase; padding: 2px 6px; border-radius: 10px; white-space: nowrap; }
+.chip.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.chip.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, transparent); }
+.chip.out { color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, transparent); }
+.empty { margin: 0; color: var(--muted); font-size: 13px; }
+textarea { font: 12px var(--f-mono); min-height: 90px; resize: vertical; }
+.msg { margin: 0; font-size: 13px; color: var(--muted); }
+.msg.err { color: var(--bad); }
+.keys { margin: 0; padding-left: 18px; font-size: 13px; color: var(--muted); display: grid; gap: 2px; }
+kbd { font: 11.5px var(--f-mono); border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; background: var(--paper); color: var(--ink); }
+
+@media (max-width: 860px) {
+  html, body { height: auto; }
+  .app { height: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
+  .stage { height: 64svh; min-height: 340px; }
+  .panel { overflow: visible; }
+  .hint { right: 10px; bottom: auto; top: 10px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .btn, .preset, .item { transition: border-color .15s, background-color .15s; }
+}
+</style>
+
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <h1>Plot Planner</h1>
+      <span class="sub" id="brand-sub">Site plan · 1 square = 1 m</span>
+    </div>
+    <div class="tools" role="toolbar" aria-label="Tools">
+      <button class="btn" data-tool="select" aria-pressed="true" title="Move, resize and rotate shapes (V)">Move</button>
+      <button class="btn" data-tool="measure" aria-pressed="false" title="Measure between two points (M)">Measure</button>
+      <button class="btn" data-tool="plot" aria-pressed="false" title="Drag the plot corners (P)">Edit plot</button>
+      <span class="sep"></span>
+      <button class="btn" id="b-undo" title="Undo (Ctrl+Z)">Undo</button>
+      <button class="btn" id="b-redo" title="Redo (Ctrl+Y)">Redo</button>
+      <span class="sep"></span>
+      <button class="btn icon" id="b-zout" title="Zoom out" aria-label="Zoom out">−</button>
+      <button class="btn icon" id="b-zin" title="Zoom in" aria-label="Zoom in">+</button>
+      <button class="btn" id="b-fit" title="Fit the plot to the screen">Fit</button>
+      <button class="btn" id="b-turn" title="Turn the whole plan by 90°">Turn 90°</button>
+    </div>
+  </header>
+
+  <main class="stage" id="stage">
+    <svg id="cv" role="img" aria-label="Site plan drawn to scale"></svg>
+    <div class="hint" id="hint"></div>
+  </main>
+
+  <aside class="panel">
+    <section>
+      <h2>Summary</h2>
+      <p class="note example" id="ex-note">Example layout. Drag, resize or delete anything. Your changes are saved in this browser.</p>
+      <dl class="stats">
+        <div><dt>Plot</dt><dd id="s-plot">–</dd></div>
+        <div><dt>Coverage</dt><dd id="s-cov">–</dd></div>
+        <div><dt>Buildings</dt><dd id="s-built">–</dd></div>
+        <div><dt>Free / garden</dt><dd id="s-free">–</dd></div>
+      </dl>
+      <div class="covbar" aria-hidden="true"><span id="bar-b"></span><span id="bar-o"></span></div>
+      <div class="legend">
+        <span><i style="background:var(--c-house)"></i>Buildings</span>
+        <span><i style="background:var(--c-terrace)"></i>Paved / terrace <b id="s-other"></b></span>
+        <span><i style="background:var(--land);border:1px solid var(--rule)"></i>Garden</span>
+      </div>
+      <p class="warnline" id="s-warn" hidden></p>
+    </section>
+
+    <section>
+      <h2>Add to plan</h2>
+      <div class="presets" id="presets"></div>
+    </section>
+
+    <section id="sel-sec" hidden>
+      <h2>Selected</h2>
+      <form id="sel-form" class="fields" autocomplete="off">
+        <div class="field half"><label for="f-name">Name</label><input id="f-name" type="text" maxlength="40"></div>
+        <div class="field"><label for="f-type">Type</label><select id="f-type"></select></div>
+        <div class="field"><label for="f-w">Outer width</label><input id="f-w" type="number" step="0.1" min="0.3" max="100" inputmode="decimal"></div>
+        <div class="field"><label for="f-d">Outer depth</label><input id="f-d" type="number" step="0.1" min="0.3" max="100" inputmode="decimal"></div>
+        <div class="field"><label for="f-rot">Angle, °</label><input id="f-rot" type="number" step="0.5" inputmode="decimal"></div>
+        <label class="check field wide"><input id="f-bld" type="checkbox"> Counts as a building (coverage and setback)</label>
+        <div class="walls" id="walls"></div>
+      </form>
+      <p id="f-status"></p>
+      <div class="row-btns">
+        <button class="btn" id="a-align" title="Turn it parallel to the nearest plot edge">Align to edge</button>
+        <button class="btn" id="a-rot" title="Rotate 90° (R)">Rotate 90°</button>
+        <button class="btn" id="a-dup" title="Duplicate (D)">Duplicate</button>
+        <button class="btn danger" id="a-del" title="Delete (Del)">Delete</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>On the plot</h2>
+      <div class="list" id="list"></div>
+    </section>
+
+    <section>
+      <h2>Rules &amp; display</h2>
+      <form id="set-form" class="fields" autocomplete="off">
+        <div class="field half"><label for="o-setback">Distance to border, m</label><input id="o-setback" type="number" step="0.5" min="0" max="20" inputmode="decimal"></div>
+        <div class="field"><label for="o-area">Official m²</label><input id="o-area" type="number" step="1" min="0" inputmode="numeric"></div>
+        <label class="check field wide"><input id="o-grid" type="checkbox"> Show 1 m grid</label>
+        <label class="check field wide"><input id="o-dims" type="checkbox"> Show distances for the selected shape</label>
+      </form>
+      <p class="note">The dashed red line shows the minimum distance from buildings to the plot border. In Lithuania 3 m is the usual minimum without your neighbour's consent, but check your detailed plan. Coverage (užstatymo tankumas) is calculated from the official area.</p>
+      <div class="row-btns"><button class="btn" id="a-resetplot">Reset plot shape</button></div>
+    </section>
+
+    <section>
+      <h2>Save &amp; share</h2>
+      <p class="note">The plan is saved in this browser automatically. To show it to someone, send them a share link.</p>
+      <div class="row-btns">
+        <button class="btn primary" id="a-link" hidden>Copy share link</button>
+        <button class="btn" id="a-copy">Copy plan</button>
+        <button class="btn" id="a-import">Paste plan</button>
+        <button class="btn danger" id="a-reset">Start over</button>
+      </div>
+      <div id="io" hidden>
+        <textarea id="io-text" aria-label="Plan text"></textarea>
+        <div class="row-btns" style="margin-top:6px"><button class="btn primary" id="io-load">Load this plan</button><button class="btn" id="io-close">Close</button></div>
+      </div>
+      <p class="msg" id="io-msg" aria-live="polite"></p>
+      <ul class="keys">
+        <li><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> nudge 10 cm, with <kbd>Shift</kbd> 1 m</li>
+        <li><kbd>R</kbd> rotate 90°, <kbd>D</kbd> duplicate, <kbd>Del</kbd> delete</li>
+        <li><kbd>Shift</kbd> while rotating turns off snapping</li>
+        <li>Double-click a wall handle to add corners, a corner to remove it</li>
+      </ul>
+    </section>
+  </aside>
+</div>
+
+<script>
+(() => {
+// traced from the cadastral map: edge angles from the map, lengths from its labels
+const DEFAULT_PLOT = [[18.09, 0], [13, 4.19], [0, 15.3], [7.49, 22.52], [26.45, 45.28], [43.38, 31.22]];
+const PLOT_VERSION = 2;
+const TYPES = {
+  house: { label: 'House', w: 12, d: 10, building: true },
+  carport: { label: 'Carport', w: 6, d: 6, building: true },
+  garage: { label: 'Garage', w: 7, d: 6, building: true },
+  shed: { label: 'Shed', w: 3, d: 2.5, building: true },
+  terrace: { label: 'Terrace', w: 6, d: 4, building: false },
+  driveway: { label: 'Driveway', w: 3.5, d: 8, building: false },
+  parking: { label: 'Parking', w: 2.5, d: 5, building: false },
+  pool: { label: 'Pool', w: 8, d: 4, building: false },
+  custom: { label: 'Other', w: 4, d: 4, building: false },
+};
+const PRESETS = [
+  { type: 'house', label: 'House', note: '12 × 10 m' },
+  { type: 'house', label: 'L-shaped house', note: '14 × 12 m', shape: 'L' },
+  ...['carport', 'garage', 'shed', 'terrace', 'driveway', 'parking', 'pool', 'custom'].map(t => ({ type: t, label: TYPES[t].label, note: `${TYPES[t].w} × ${TYPES[t].d} m` })),
+];
+const KEY = 'plot-planner.v1';
+
+const $ = s => document.querySelector(s);
+const svg = $('#cv');
+
+// vector helpers
+const add = (a, b) => [a[0] + b[0], a[1] + b[1]];
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1]];
+const mul = (a, s) => [a[0] * s, a[1] * s];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1];
+const cross = (a, b) => a[0] * b[1] - a[1] * b[0];
+const len = a => Math.hypot(a[0], a[1]);
+const dist = (a, b) => len(sub(a, b));
+const norm = a => { const l = len(a) || 1; return [a[0] / l, a[1] / l]; };
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const rnd = (v, step) => Math.round(v / step) * step;
+const deg = r => r * 180 / Math.PI;
+const rad = d => d * Math.PI / 180;
+const rotV = (v, a) => { const c = Math.cos(rad(a)), s = Math.sin(rad(a)); return [v[0] * c - v[1] * s, v[0] * s + v[1] * c]; };
+const r3 = v => Array.isArray(v) ? v.map(r3) : +(+v).toFixed(3);
+const clone = o => JSON.parse(JSON.stringify(o));
+const normAngle = a => { a = ((a + 180) % 360 + 360) % 360 - 180; return +a.toFixed(2); };
+const upright = a => { a = normAngle(a); if (a > 90) { a -= 180; } else if (a <= -90) { a += 180; } return a; };
+const fmt = n => String(+(+n).toFixed(2));
+const fmtA = n => Math.round(n).toLocaleString('en-US');
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const uid = () => 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+function polyArea(P) {
+  let a = 0;
+  for (let i = 0; i < P.length; i++) { a += cross(P[i], P[(i + 1) % P.length]); }
+  return a / 2;
+}
+function centroid(P) { return mul(P.reduce((s, p) => add(s, p), [0, 0]), 1 / P.length); }
+function polyCentroid(P) {
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0; i < P.length; i++) {
+    const p = P[i], q = P[(i + 1) % P.length], f = cross(p, q);
+    a += f; cx += (p[0] + q[0]) * f; cy += (p[1] + q[1]) * f;
+  }
+  return Math.abs(a) < 1e-9 ? centroid(P) : [cx / (3 * a), cy / (3 * a)];
+}
+function pointInPoly(p, P) {
+  let inside = false;
+  for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+    const [xi, yi] = P[i], [xj, yj] = P[j];
+    if ((yi > p[1]) !== (yj > p[1]) && p[0] < (xj - xi) * (p[1] - yi) / (yj - yi) + xi) { inside = !inside; }
+  }
+  return inside;
+}
+function bbox(P) {
+  const xs = P.map(p => p[0]), ys = P.map(p => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  return { x0, x1, y0, y1, w: x1 - x0, h: y1 - y0 };
+}
+function segClosest(p, a, b) {
+  const ab = sub(b, a), l2 = dot(ab, ab) || 1;
+  return add(a, mul(ab, clamp(dot(sub(p, a), ab) / l2, 0, 1)));
+}
+function segIntersect(a, b, c, d) {
+  const r = sub(b, a), s = sub(d, c);
+  const o1 = cross(r, sub(c, a)), o2 = cross(r, sub(d, a)), o3 = cross(s, sub(a, c)), o4 = cross(s, sub(b, c));
+  return o1 * o2 < 0 && o3 * o4 < 0;
+}
+function segSegClosest(a, b, c, d) {
+  if (segIntersect(a, b, c, d)) {
+    const r = sub(b, a), s = sub(d, c);
+    const p = add(a, mul(r, cross(sub(c, a), s) / cross(r, s)));
+    return { d: 0, p, q: p };
+  }
+  let best = null;
+  for (const [p, q] of [[a, segClosest(a, c, d)], [b, segClosest(b, c, d)], [segClosest(c, a, b), c], [segClosest(d, a, b), d]]) {
+    const dd = dist(p, q);
+    if (!best || dd < best.d) { best = { d: dd, p, q }; }
+  }
+  return best;
+}
+function polySegClosest(C, a, b) {
+  let best = null;
+  for (let i = 0; i < C.length; i++) {
+    const r = segSegClosest(C[i], C[(i + 1) % C.length], a, b);
+    if (!best || r.d < best.d) { best = r; }
+  }
+  return best;
+}
+function polyPolyClosest(A, B) {
+  let best = null;
+  for (let i = 0; i < B.length; i++) {
+    const r = polySegClosest(A, B[i], B[(i + 1) % B.length]);
+    if (!best || r.d < best.d) { best = r; }
+  }
+  return best;
+}
+// shrunk by 1 cm so shapes that only touch do not count as overlapping
+function polysOverlap(A0, B0) {
+  const shrink = P => { const c = centroid(P); return P.map(p => add(p, mul(norm(sub(c, p)), 0.01))); };
+  const A = shrink(A0), B = shrink(B0);
+  for (let i = 0; i < A.length; i++) {
+    for (let j = 0; j < B.length; j++) {
+      if (segIntersect(A[i], A[(i + 1) % A.length], B[j], B[(j + 1) % B.length])) { return true; }
+    }
+  }
+  return A.some(p => pointInPoly(p, B0)) || B.some(p => pointInPoly(p, A0));
+}
+
+// shapes: o.pts are corners relative to (o.x, o.y), turned by o.rot
+const rectPts = (w, d) => [[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2]];
+const L_PTS = [[-7, -6], [7, -6], [7, 1], [1, 1], [1, 6], [-7, 6]];
+const corners = o => o.pts.map(p => add([o.x, o.y], rotV(p, o.rot)));
+const toLocal = (o, w) => rotV(sub(w, [o.x, o.y]), -o.rot);
+const objArea = o => Math.abs(polyArea(o.pts));
+const objSize = o => { const b = bbox(o.pts); return { w: b.w, d: b.h }; };
+const isRect = o => o.pts.length === 4 && Math.abs(objArea(o) - objSize(o).w * objSize(o).d) < 0.01;
+function recenter(o) {
+  const b = bbox(o.pts), c = [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2];
+  o.pts = r3(o.pts.map(p => sub(p, c)));
+  const wc = add([o.x, o.y], rotV(c, o.rot));
+  o.x = r3(wc[0]);
+  o.y = r3(wc[1]);
+}
+function setSize(o, w, d) {
+  const b = bbox(o.pts), sx = w / (b.w || 1), sy = d / (b.h || 1);
+  o.pts = o.pts.map(p => [b.x0 + (p[0] - b.x0) * sx, b.y0 + (p[1] - b.y0) * sy]);
+  recenter(o);
+}
+// changing a wall's length moves the next wall along, so right angles stay right angles
+function setWallLength(o, i, L) {
+  const P = o.pts.map(p => p.slice()), n = P.length, a = P[i], b = P[(i + 1) % n], cur = dist(a, b);
+  if (cur < 1e-9) { return; }
+  const shift = mul(sub(b, a), (L - cur) / cur);
+  P[(i + 1) % n] = add(P[(i + 1) % n], shift);
+  if (n >= 4) { P[(i + 2) % n] = add(P[(i + 2) % n], shift); }
+  o.pts = P;
+  recenter(o);
+}
+function splitWall(o, i) {
+  const n = o.pts.length, a = o.pts[i], b = o.pts[(i + 1) % n], ab = sub(b, a);
+  o.pts.splice(i + 1, 0, add(a, mul(ab, 1 / 3)), add(a, mul(ab, 2 / 3)));
+  recenter(o);
+}
+function removeCorner(o, i) {
+  if (o.pts.length <= 3) { return; }
+  o.pts.splice(i, 1);
+  recenter(o);
+}
+
+// plot helpers; collinear points (like the 6.6 + 17.1 m side) are merged into one edge
+function simplify(P) {
+  const n = P.length;
+  const out = P.filter((p, i) => {
+    const u = norm(sub(p, P[(i - 1 + n) % n])), v = norm(sub(P[(i + 1) % n], p));
+    return Math.abs(cross(u, v)) > 0.035 || dot(u, v) < 0;
+  });
+  return out.length >= 3 ? out : P;
+}
+const edges = P => P.map((p, i) => [p, P[(i + 1) % P.length]]);
+const edgeAngle = ([a, b]) => deg(Math.atan2(b[1] - a[1], b[0] - a[0]));
+const longestEdge = P => edges(simplify(P)).sort((x, y) => dist(y[0], y[1]) - dist(x[0], x[1]))[0];
+function inwardNormal(P, a, b) {
+  const d = norm(sub(b, a));
+  return polyArea(P) > 0 ? [-d[1], d[0]] : [d[1], -d[0]];
+}
+function inset(P0, s) {
+  const P = simplify(P0), n = P.length, sign = Math.sign(polyArea(P));
+  const lines = P.map((p, i) => {
+    const q = P[(i + 1) % n];
+    return { p: add(p, mul(inwardNormal(P, p, q), s)), d: norm(sub(q, p)) };
+  });
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const L1 = lines[(i - 1 + n) % n], L2 = lines[i], den = cross(L1.d, L2.d);
+    if (Math.abs(den) < 1e-9) { return null; }
+    out.push(add(L1.p, mul(L1.d, cross(sub(L2.p, L1.p), L2.d) / den)));
+  }
+  if (Math.sign(polyArea(out)) !== sign) { return null; }
+  for (let i = 0; i < n; i++) {
+    if (dot(sub(out[(i + 1) % n], out[i]), lines[i].d) <= 0) { return null; }
+  }
+  return out;
+}
+function nearestQuarter(base, target) {
+  let best = base;
+  for (let k = -4; k <= 4; k++) {
+    if (Math.abs(normAngle(base + k * 90 - target)) < Math.abs(normAngle(best - target))) { best = base + k * 90; }
+  }
+  return normAngle(+best.toFixed(2));
+}
+function snapAngle(a) {
+  for (const base of [0, ...edges(simplify(state.plot)).map(edgeAngle)]) {
+    const c = nearestQuarter(base, a);
+    if (Math.abs(normAngle(a - c)) < 3) { return c; }
+  }
+  return normAngle(rnd(a, 0.5));
+}
+// turns the whole plan around (0,0), so DEFAULT_PLOT turned by `north` is always the original plot
+function rotateState(s, th) {
+  s.plot = r3(s.plot.map(p => rotV(p, th)));
+  for (const o of s.objects) {
+    const p = rotV([o.x, o.y], th);
+    o.x = r3(p[0]);
+    o.y = r3(p[1]);
+    o.rot = normAngle(o.rot + th);
+  }
+  s.north = normAngle((s.north || 0) + th);
+}
+function straighten(s) {
+  const a = edgeAngle(longestEdge(s.plot));
+  rotateState(s, rnd(a, 90) - a);
+  for (const o of s.objects) {
+    if (Math.abs(normAngle(o.rot - rnd(o.rot, 90))) < 1.5) { o.rot = normAngle(rnd(o.rot, 90)); }
+  }
+}
+
+function unionArea(objs) {
+  if (!objs.length) { return { a: 0, approx: false }; }
+  const Cs = objs.map(corners);
+  let overlap = false;
+  for (let i = 0; i < Cs.length && !overlap; i++) {
+    for (let j = i + 1; j < Cs.length; j++) {
+      if (polysOverlap(Cs[i], Cs[j])) { overlap = true; break; }
+    }
+  }
+  if (!overlap) { return { a: objs.reduce((s, o) => s + objArea(o), 0), approx: false }; }
+  const B = bbox(Cs.flat());
+  let step = 0.05;
+  if (B.w * B.h / (step * step) > 3e5) { step = Math.sqrt(B.w * B.h / 3e5); }
+  const fr = objs.map(o => ({ o, c: Math.cos(rad(o.rot)), s: Math.sin(rad(o.rot)), b: bbox(o.pts) }));
+  let count = 0;
+  for (let x = B.x0 + step / 2; x < B.x1; x += step) {
+    for (let y = B.y0 + step / 2; y < B.y1; y += step) {
+      for (const f of fr) {
+        const dx = x - f.o.x, dy = y - f.o.y, lx = dx * f.c + dy * f.s, ly = -dx * f.s + dy * f.c;
+        if (lx >= f.b.x0 && lx <= f.b.x1 && ly >= f.b.y0 && ly <= f.b.y1 && pointInPoly([lx, ly], f.o.pts)) { count++; break; }
+      }
+    }
+  }
+  return { a: count * step * step, approx: true };
+}
+
+function objStatus(o) {
+  const C = corners(o), P = state.plot;
+  const boundaryDist = p => Math.min(...edges(P).map(([a, b]) => dist(p, segClosest(p, a, b))));
+  if (C.some(p => !pointInPoly(p, P) && boundaryDist(p) > 0.01)) { return { level: 'out', minD: 0 }; }
+  const minD = Math.min(...edges(P).map(([a, b]) => polySegClosest(C, a, b).d));
+  if (o.building && state.setback > 0 && minD < state.setback - 0.005) { return { level: 'warn', minD }; }
+  return { level: 'ok', minD };
+}
+
+// state
+let state;
+const view = { k: 10, tx: 0, ty: 0, fitted: false };
+const ui = { tool: 'select', sel: null, measure: null, drag: null, formSnap: null, hiWall: null, lastTap: {} };
+const undoStack = [], redoStack = [];
+
+function exampleState() {
+  const plot = DEFAULT_PLOT.map(p => p.slice());
+  const E = plot[4], F = plot[5], u = norm(sub(F, E)), mid = mul(add(E, F), 0.5), n = inwardNormal(plot, E, F);
+  const rot = +deg(Math.atan2(u[1], u[0])).toFixed(1);
+  const mk = (type, a, b, w, d) => {
+    const p = add(mid, add(mul(u, a), mul(n, b)));
+    return { id: uid(), type, name: TYPES[type].label, x: r3(p[0]), y: r3(p[1]), rot, building: TYPES[type].building, pts: rectPts(w, d) };
+  };
+  const s = {
+    plot, plotV: PLOT_VERSION, north: 0, setback: 3, officialArea: 950, showGrid: true, showDims: true, example: true,
+    objects: [mk('house', 0, 17, 12, 10), mk('carport', -4.5, 6.5, 6, 6), mk('terrace', 1, 24, 6, 4), mk('driveway', -4.5, 1.85, 3.5, 3.3)],
+  };
+  straighten(s);
+  return s;
+}
+function normalize(s) {
+  if (!s || !Array.isArray(s.plot) || s.plot.length < 3 || !Array.isArray(s.objects)) { return null; }
+  const num = (v, d) => Number.isFinite(+v) ? +v : d;
+  const out = {
+    plot: s.plot.map(p => [num(p[0], 0), num(p[1], 0)]),
+    north: num(s.north, 0), plotV: PLOT_VERSION,
+    setback: num(s.setback, 3), officialArea: num(s.officialArea, 0),
+    showGrid: s.showGrid !== false, showDims: s.showDims !== false, example: !!s.example,
+    objects: s.objects.filter(o => o && TYPES[o.type]).map(o => {
+      const pts = Array.isArray(o.pts) && o.pts.length >= 3
+        ? o.pts.map(p => [num(p[0], 0), num(p[1], 0)])
+        : rectPts(clamp(num(o.w, 4), 0.3, 100), clamp(num(o.d, 4), 0.3, 100));
+      return {
+        id: String(o.id || uid()), type: o.type, name: String(o.name || TYPES[o.type].label).slice(0, 40),
+        x: num(o.x, 0), y: num(o.y, 0), rot: normAngle(num(o.rot, 0)), building: !!o.building, pts,
+      };
+    }),
+  };
+  // plans saved before the view could be turned are straightened once
+  if (!Number.isFinite(+s.north)) { straighten(out); }
+  // plans saved with the first, less exact plot outline get the corrected one
+  if (s.plotV !== PLOT_VERSION) { out.plot = r3(DEFAULT_PLOT.map(p => rotV(p, out.north))); }
+  return out;
+}
+const snapshot = () => JSON.stringify(state);
+function save() { try { localStorage.setItem(KEY, snapshot()); } catch (e) { /* storage blocked */ } }
+function commit(prev) {
+  if (prev == null || prev === snapshot()) { return; }
+  state.example = false;
+  undoStack.push(prev);
+  if (undoStack.length > 150) { undoStack.shift(); }
+  redoStack.length = 0;
+  save();
+}
+function restore(from, to) {
+  if (!from.length) { return; }
+  to.push(snapshot());
+  state = JSON.parse(from.pop());
+  if (!selObj()) { ui.sel = null; }
+  save();
+  render();
+}
+const selObj = () => state.objects.find(o => o.id === ui.sel) || null;
+function mutate(fn) {
+  const prev = snapshot();
+  fn();
+  commit(prev);
+  render();
+}
+
+// view
+const stageSize = () => [svg.clientWidth, svg.clientHeight];
+function fit() {
+  const [W, H] = stageSize();
+  if (!W || !H) { return; }
+  const b = bbox(state.plot), pad = Math.min(56, Math.min(W, H) * 0.12);
+  view.k = Math.min((W - 2 * pad) / (b.w || 1), (H - 2 * pad) / (b.h || 1));
+  view.tx = W / 2 - (b.x0 + b.x1) / 2 * view.k;
+  view.ty = H / 2 - (b.y0 + b.y1) / 2 * view.k;
+  view.fitted = true;
+}
+function zoomAt(p, f) {
+  const nk = clamp(view.k * f, 2, 250);
+  f = nk / view.k;
+  view.tx = p[0] - (p[0] - view.tx) * f;
+  view.ty = p[1] - (p[1] - view.ty) * f;
+  view.k = nk;
+  render();
+}
+const toWorld = p => [(p[0] - view.tx) / view.k, (p[1] - view.ty) / view.k];
+function evPt(e) { const r = svg.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
+
+// rendering
+function render() {
+  const [W, H] = stageSize();
+  if (!W || !H) { return; }
+  const k = view.k;
+  const S = p => [p[0] * k + view.tx, p[1] * k + view.ty];
+  const f = v => v.toFixed(1);
+  const pts = P => P.map(p => S(p).map(f).join(',')).join(' ');
+  const rotAt = (a, p) => `transform="rotate(${a.toFixed(1)} ${f(p[0])} ${f(p[1])})"`;
+  const plot = state.plot;
+  let h = '<defs><pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="7" class="hatch-line"/></pattern></defs>';
+
+  if (state.showGrid) {
+    const step = k >= 9 ? 1 : k * 5 >= 9 ? 5 : 10, every = step === 1 ? 5 : 2;
+    let minor = '', major = '';
+    for (let x = Math.ceil(-view.tx / k / step) * step; x <= (W - view.tx) / k; x += step) {
+      const d = `M${f(x * k + view.tx)} 0V${H}`;
+      if (Math.round(x / step) % every === 0) { major += d; } else { minor += d; }
+    }
+    for (let y = Math.ceil(-view.ty / k / step) * step; y <= (H - view.ty) / k; y += step) {
+      const d = `M0 ${f(y * k + view.ty)}H${W}`;
+      if (Math.round(y / step) % every === 0) { major += d; } else { minor += d; }
+    }
+    h += `<path d="${minor}" class="grid"/><path d="${major}" class="grid major"/>`;
+  }
+
+  h += `<polygon points="${pts(plot)}" class="land"/>`;
+  const inner = state.setback > 0 ? inset(plot, state.setback) : null;
+  if (inner) {
+    h += `<path d="M${pts(plot)}Z M${pts(inner)}Z" fill-rule="evenodd" class="setback"/>`;
+    h += `<polygon points="${pts(inner)}" class="setback-line"/>`;
+  }
+  h += `<polygon points="${pts(plot)}" class="boundary"/>`;
+
+  const edgeLabel = (P, a, b, cls, off, text) => {
+    const sa = S(a), sb = S(b);
+    if (dist(sa, sb) < 30) { return ''; }
+    const m = add(mul(add(sa, sb), 0.5), mul(inwardNormal(P, a, b), -off));
+    return `<text class="lbl ${cls}" x="${f(m[0])}" y="${f(m[1])}" ${rotAt(upright(deg(Math.atan2(sb[1] - sa[1], sb[0] - sa[0]))), m)}>${text}</text>`;
+  };
+  for (const [a, b] of edges(plot)) { h += edgeLabel(plot, a, b, 'edge-lbl', 14, `${dist(a, b).toFixed(1)} m`); }
+
+  const statuses = new Map(state.objects.map(o => [o.id, objStatus(o)]));
+  for (const o of state.objects) {
+    const st = statuses.get(o.id), C = corners(o), c = S(polyCentroid(C)), sz = objSize(o);
+    h += `<g data-obj="${esc(o.id)}" class="obj t-${o.type} st-${st.level}${o.id === ui.sel ? ' sel' : ''}"><polygon points="${pts(C)}"/>`;
+    const along = sz.w >= sz.d, runPx = (along ? sz.w : sz.d) * k * (isRect(o) ? 1 : 0.6), crossPx = (along ? sz.d : sz.w) * k * (isRect(o) ? 1 : 0.6);
+    const tr = rotAt(upright(o.rot + (along ? 0 : 90)), c);
+    const name = o.name, dims = isRect(o) ? `${fmt(sz.w)} × ${fmt(sz.d)} m` : `${fmt(objArea(o).toFixed(1))} m²`;
+    const fitsName = name.length * 7.4 + 10 < runPx && crossPx > 20;
+    const fitsDims = dims.length * 6.4 + 10 < runPx && crossPx > 40;
+    if (fitsName && fitsDims) {
+      h += `<text class="o-name" x="${f(c[0])}" y="${f(c[1] - 8)}" ${tr}>${esc(name)}</text><text class="o-dim" x="${f(c[0])}" y="${f(c[1] + 9)}" ${tr}>${dims}</text>`;
+    } else if (fitsName) {
+      h += `<text class="o-name" x="${f(c[0])}" y="${f(c[1])}" ${tr}>${esc(name)}</text>`;
+    }
+    h += '</g>';
+  }
+
+  const so = selObj();
+  if (so && ui.tool === 'select') {
+    const C = corners(so), st = statuses.get(so.id), n = C.length;
+    const dimLine = (r, cls) => {
+      const a = S(r.p), b = S(r.q), m = mul(add(a, b), 0.5);
+      if (dist(a, b) < 4) { return ''; }
+      return `<line class="dim-line ${cls}" x1="${f(a[0])}" y1="${f(a[1])}" x2="${f(b[0])}" y2="${f(b[1])}"/>` +
+        `<circle class="dim-end ${cls}" cx="${f(a[0])}" cy="${f(a[1])}" r="2.5"/><circle class="dim-end ${cls}" cx="${f(b[0])}" cy="${f(b[1])}" r="2.5"/>` +
+        `<text class="lbl dim-lbl ${cls}" x="${f(m[0])}" y="${f(m[1])}">${r.d.toFixed(2)} m</text>`;
+    };
+    if (state.showDims && st.level !== 'out') {
+      for (const [a, b] of edges(simplify(plot))) {
+        const r = polySegClosest(C, a, b);
+        h += dimLine(r, so.building && state.setback > 0 && r.d < state.setback - 0.005 ? 'bad' : '');
+      }
+    }
+    if (state.showDims) {
+      for (const other of state.objects) {
+        if (other === so) { continue; }
+        const r = polyPolyClosest(C, corners(other));
+        if (r.d > 0.05 && r.d < 25) { h += dimLine(r, 'between'); }
+      }
+    }
+    if (ui.hiWall != null && ui.hiWall < n) {
+      const a = S(C[ui.hiWall]), b = S(C[(ui.hiWall + 1) % n]);
+      h += `<line class="hi-wall" x1="${f(a[0])}" y1="${f(a[1])}" x2="${f(b[0])}" y2="${f(b[1])}"/>`;
+    }
+    for (let i = 0; i < n; i++) { h += edgeLabel(C, C[i], C[(i + 1) % n], 'wall-lbl', 13, `${dist(C[i], C[(i + 1) % n]).toFixed(2)} m`); }
+
+    const b = bbox(so.pts), uy = rotV([0, 1], so.rot);
+    const top = S(add([so.x, so.y], rotV([(b.x0 + b.x1) / 2, b.y0], so.rot))), rp = add(top, mul(uy, -30));
+    h += `<line class="rot-line" x1="${f(top[0])}" y1="${f(top[1])}" x2="${f(rp[0])}" y2="${f(rp[1])}"/>`;
+    for (let i = 0; i < n; i++) {
+      const sa = S(C[i]), sb = S(C[(i + 1) % n]), m = mul(add(sa, sb), 0.5);
+      if (dist(sa, sb) < 30) { continue; }
+      h += `<rect class="handle wall" x="${f(m[0] - 8)}" y="${f(m[1] - 3.5)}" width="16" height="7" rx="2" ${rotAt(deg(Math.atan2(sb[1] - sa[1], sb[0] - sa[0])), m)}/>`;
+      h += `<circle class="hit wall" data-wall="${i}" cx="${f(m[0])}" cy="${f(m[1])}" r="12"/>`;
+    }
+    for (let i = 0; i < n; i++) {
+      const p = S(C[i]);
+      h += `<circle class="handle" cx="${f(p[0])}" cy="${f(p[1])}" r="5"/><circle class="hit vtx-h" data-v="${i}" cx="${f(p[0])}" cy="${f(p[1])}" r="11"/>`;
+    }
+    h += `<circle class="handle" cx="${f(rp[0])}" cy="${f(rp[1])}" r="7"/><circle class="hit rot" data-h="rot" cx="${f(rp[0])}" cy="${f(rp[1])}" r="15"/>`;
+  }
+
+  plot.forEach((p, i) => {
+    const s = S(p);
+    if (ui.tool === 'plot') {
+      h += `<circle class="vtx big" cx="${f(s[0])}" cy="${f(s[1])}" r="7"/><circle class="pv-hit" data-pv="${i}" cx="${f(s[0])}" cy="${f(s[1])}" r="16"/>`;
+    } else {
+      h += `<circle class="vtx" cx="${f(s[0])}" cy="${f(s[1])}" r="3.5"/>`;
+    }
+  });
+
+  if (ui.measure) {
+    const a = S(ui.measure.a), b = S(ui.measure.b), m = mul(add(a, b), 0.5), d = dist(ui.measure.a, ui.measure.b);
+    h += `<line class="m-line" x1="${f(a[0])}" y1="${f(a[1])}" x2="${f(b[0])}" y2="${f(b[1])}"/><circle class="m-end" cx="${f(a[0])}" cy="${f(a[1])}" r="3.5"/><circle class="m-end" cx="${f(b[0])}" cy="${f(b[1])}" r="3.5"/>`;
+    if (d > 0) { h += `<text class="lbl m-lbl" x="${f(m[0])}" y="${f(m[1] - 12)}">${d.toFixed(2)} m</text>`; }
+  }
+
+  h += `<g transform="translate(${W - 30} 36) rotate(${state.north})"><path class="ov" d="M0 -16 L7 8 L0 3 L-7 8Z"/><text class="ov-text" y="24" transform="rotate(${-state.north} 0 20)">N</text></g>`;
+  const nice = [1, 2, 5, 10, 20, 50].find(m => m * k >= 70) || 50, bw = nice * k, bx = W - 22 - bw, by = H - 22;
+  h += `<path class="ov-line" d="M${f(bx)} ${by - 5}V${by}H${f(bx + bw)}V${by - 5}"/><text class="ov-text" x="${f(bx + bw / 2)}" y="${by - 8}">${nice} M</text>`;
+
+  svg.innerHTML = h;
+  svg.setAttribute('class', 'tool-' + ui.tool);
+  updatePanel(statuses);
+}
+
+const STATUS_TEXT = { ok: 'Fits', warn: 'Too close', out: 'Outside' };
+function setVal(id, v) {
+  const el = typeof id === 'string' ? $(id) : id;
+  if (!el || document.activeElement === el) { return; }
+  if (el.type === 'checkbox') { el.checked = v; } else if (String(el.value) !== String(v)) { el.value = v; }
+}
+let wallsKey = '';
+function updatePanel(statuses) {
+  const plotA = Math.abs(polyArea(state.plot));
+  const base = state.officialArea > 0 ? state.officialArea : plotA;
+  const b = unionArea(state.objects.filter(o => o.building)), all = unionArea(state.objects);
+  const other = Math.max(0, all.a - b.a), free = Math.max(0, base - all.a);
+  $('#s-plot').innerHTML = `${fmtA(base)} m²<small>${state.officialArea > 0 ? `official · drawn ${fmtA(plotA)} m²` : `${(plotA / 100).toFixed(2)} a, drawn`}</small>`;
+  $('#s-cov').innerHTML = `${(b.a / base * 100).toFixed(1)} %<small>of the plot is built on</small>`;
+  $('#s-built').innerHTML = `${b.approx ? '≈' : ''}${fmtA(b.a)} m²<small>footprint of buildings</small>`;
+  $('#s-free').innerHTML = `${fmtA(free)} m²<small>${(free / base * 100).toFixed(0)} % stays open</small>`;
+  $('#s-other').textContent = other > 0 ? `${fmtA(other)} m²` : '';
+  $('#bar-b').style.width = clamp(b.a / base * 100, 0, 100) + '%';
+  $('#bar-o').style.width = clamp(other / base * 100, 0, 100) + '%';
+  $('#ex-note').hidden = !state.example;
+
+  const outN = [...statuses.values()].filter(s => s.level === 'out').length;
+  const warnN = [...statuses.values()].filter(s => s.level === 'warn').length;
+  const w = $('#s-warn');
+  w.hidden = !outN && !warnN;
+  w.className = 'warnline' + (outN ? ' bad' : '');
+  w.textContent = [outN && `${outN} outside the plot`, warnN && `${warnN} closer than ${fmt(state.setback)} m to the border`].filter(Boolean).join(' · ');
+
+  $('#list').innerHTML = state.objects.length ? state.objects.map(o => {
+    const st = statuses.get(o.id), sz = objSize(o);
+    const dm = isRect(o) ? `${fmt(sz.w)}×${fmt(sz.d)}` : `${fmtA(objArea(o))} m²`;
+    return `<button type="button" class="item${o.id === ui.sel ? ' on' : ''}" data-id="${esc(o.id)}"><span class="sw t-${o.type}"></span><span class="nm">${esc(o.name)}</span><span class="dm">${dm}</span><span class="chip ${st.level}">${STATUS_TEXT[st.level]}</span></button>`;
+  }).join('') : '<p class="empty">Nothing on the plot yet. Add a house or a carport above.</p>';
+
+  const so = selObj();
+  $('#sel-sec').hidden = !so;
+  if (so) {
+    const sz = objSize(so);
+    setVal('#f-name', so.name);
+    setVal('#f-type', so.type);
+    setVal('#f-w', fmt(sz.w));
+    setVal('#f-d', fmt(sz.d));
+    setVal('#f-rot', fmt(so.rot));
+    setVal('#f-bld', so.building);
+    const key = so.id + ':' + so.pts.length;
+    if (key !== wallsKey) {
+      wallsKey = key;
+      $('#walls').innerHTML = '<p class="walls-h">Walls in metres. Type a length, or drag the orange handles on the plan.</p>' +
+        so.pts.map((_, i) => `<label class="wall-row" for="wl-${i}"><span>${i + 1}</span><input id="wl-${i}" data-wall="${i}" type="number" step="0.05" min="0.3" max="100" inputmode="decimal"><span>m</span></label>`).join('');
+    }
+    so.pts.forEach((p, i) => setVal(`#wl-${i}`, fmt(dist(p, so.pts[(i + 1) % so.pts.length]))));
+    const st = statuses.get(so.id);
+    const msg = st.level === 'out' ? '<b style="color:var(--bad)">Part of it is outside the plot.</b>'
+      : st.level === 'warn' ? `<b style="color:var(--warn)">${st.minD.toFixed(2)} m from the border, ${fmt(state.setback)} m needed.</b>`
+      : `${st.minD.toFixed(2)} m from the nearest border.`;
+    $('#f-status').innerHTML = `${fmt(objArea(so).toFixed(1))} m² · ${msg}`;
+  } else {
+    wallsKey = '';
+  }
+  setVal('#o-setback', fmt(state.setback));
+  setVal('#o-area', state.officialArea || '');
+  setVal('#o-grid', state.showGrid);
+  setVal('#o-dims', state.showDims);
+  $('#b-undo').disabled = !undoStack.length;
+  $('#b-redo').disabled = !redoStack.length;
+}
+
+const HINTS = {
+  select: 'Drag a shape to move it · drag orange wall handles to move a wall · drag corners · double-click a wall handle to add corners · round handle rotates',
+  measure: 'Drag between two points to measure. It snaps to corners.',
+  plot: 'Drag the red corners to match your survey. Edge lengths update as you drag.',
+};
+function setTool(t) {
+  ui.tool = t;
+  if (t !== 'measure') { ui.measure = null; }
+  document.querySelectorAll('[data-tool]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.tool === t)));
+  $('#hint').innerHTML = `<span>${HINTS[t]}</span>`;
+  render();
+}
+
+// pointer input
+const pointers = new Map();
+function snapPoint(w) {
+  const cands = [...state.plot, ...state.objects.flatMap(corners)];
+  let best = null, bd = 12 / view.k;
+  for (const c of cands) {
+    const d = dist(c, w);
+    if (d < bd) { bd = d; best = c; }
+  }
+  return best ? best.slice() : [rnd(w[0], 0.05), rnd(w[1], 0.05)];
+}
+function endDrag() {
+  if (ui.drag && ui.drag.snap != null) { commit(ui.drag.snap); }
+  ui.drag = null;
+  render();
+}
+
+svg.addEventListener('pointerdown', e => {
+  if (e.button !== undefined && e.button > 0) { return; }
+  svg.setPointerCapture(e.pointerId);
+  const p = evPt(e);
+  pointers.set(e.pointerId, p);
+  if (pointers.size === 2) {
+    if (ui.drag && ui.drag.snap != null) { commit(ui.drag.snap); }
+    const [a, b] = [...pointers.values()];
+    ui.drag = { kind: 'pinch', d0: dist(a, b) || 1, k0: view.k, w0: toWorld(mul(add(a, b), 0.5)) };
+    return;
+  }
+  if (pointers.size > 2) { return; }
+  const w = toWorld(p);
+  const t = e.target.closest('[data-h],[data-v],[data-wall],[data-obj],[data-pv]');
+  const snap = snapshot();
+  if (ui.tool === 'measure') {
+    const s = snapPoint(w);
+    ui.measure = { a: s, b: s.slice() };
+    ui.drag = { kind: 'measure' };
+  } else if (ui.tool === 'plot' && t && t.dataset.pv != null) {
+    ui.drag = { kind: 'pv', i: +t.dataset.pv, snap };
+  } else if (ui.tool === 'select' && t && (t.dataset.h || t.dataset.v != null || t.dataset.wall != null)) {
+    const o = selObj();
+    const kind = t.dataset.v != null ? 'vertex' : t.dataset.wall != null ? 'wall' : 'rot';
+    const i = kind === 'vertex' ? +t.dataset.v : kind === 'wall' ? +t.dataset.wall : -1;
+    const tapKey = kind + i, now = performance.now();
+    if (kind !== 'rot' && ui.lastTap.key === tapKey && now - ui.lastTap.t < 400) {
+      ui.lastTap = {};
+      mutate(() => { if (kind === 'wall') { splitWall(o, i); } else { removeCorner(o, i); } });
+      return;
+    }
+    ui.lastTap = { key: tapKey, t: now };
+    ui.drag = { kind, i, o0: clone(o), l0: toLocal(o, w), snap };
+  } else if (ui.tool === 'select' && t && t.dataset.obj) {
+    ui.sel = t.dataset.obj;
+    const o = selObj();
+    ui.drag = { kind: 'move', off: sub(w, [o.x, o.y]), snap };
+  } else {
+    if (ui.tool === 'select') { ui.sel = null; }
+    ui.drag = { kind: 'pan', s: p, t0: [view.tx, view.ty] };
+  }
+  render();
+});
+
+svg.addEventListener('pointermove', e => {
+  if (!pointers.has(e.pointerId)) { return; }
+  const p = evPt(e);
+  pointers.set(e.pointerId, p);
+  const d = ui.drag;
+  if (!d) { return; }
+  const w = toWorld(p), o = selObj();
+  if (d.kind === 'pinch') {
+    if (pointers.size < 2) { return; }
+    const [a, b] = [...pointers.values()], m = mul(add(a, b), 0.5);
+    view.k = clamp(d.k0 * dist(a, b) / d.d0, 2, 250);
+    view.tx = m[0] - d.w0[0] * view.k;
+    view.ty = m[1] - d.w0[1] * view.k;
+  } else if (d.kind === 'pan') {
+    view.tx = d.t0[0] + p[0] - d.s[0];
+    view.ty = d.t0[1] + p[1] - d.s[1];
+  } else if (d.kind === 'measure') {
+    ui.measure.b = snapPoint(w);
+  } else if (d.kind === 'pv') {
+    state.plot[d.i] = [rnd(w[0], 0.01), rnd(w[1], 0.01)];
+  } else if (o && d.kind === 'move') {
+    o.x = r3(rnd(w[0] - d.off[0], 0.05));
+    o.y = r3(rnd(w[1] - d.off[1], 0.05));
+  } else if (o && d.kind === 'rot') {
+    const a = deg(Math.atan2(w[1] - o.y, w[0] - o.x)) + 90;
+    o.rot = e.shiftKey ? normAngle(rnd(a, 0.5)) : snapAngle(a);
+  } else if (o && d.kind === 'vertex') {
+    const o0 = d.o0, n = o0.pts.length, l = toLocal(o0, w).map(v => rnd(v, 0.05));
+    const tol = Math.max(0.15, 8 / view.k);
+    for (const q of [o0.pts[(d.i - 1 + n) % n], o0.pts[(d.i + 1) % n]]) {
+      if (Math.abs(l[0] - q[0]) < tol) { l[0] = q[0]; }
+      if (Math.abs(l[1] - q[1]) < tol) { l[1] = q[1]; }
+    }
+    Object.assign(o, clone(o0));
+    o.pts[d.i] = l;
+    recenter(o);
+  } else if (o && d.kind === 'wall') {
+    const o0 = d.o0, n = o0.pts.length, a = o0.pts[d.i], b = o0.pts[(d.i + 1) % n];
+    const u = norm(sub(b, a)), nn = [-u[1], u[0]];
+    const off = rnd(dot(sub(toLocal(o0, w), d.l0), nn), 0.05);
+    Object.assign(o, clone(o0));
+    o.pts[d.i] = add(a, mul(nn, off));
+    o.pts[(d.i + 1) % n] = add(b, mul(nn, off));
+    recenter(o);
+  }
+  render();
+});
+
+function pointerEnd(e) {
+  if (!pointers.has(e.pointerId)) { return; }
+  pointers.delete(e.pointerId);
+  if (ui.drag && ui.drag.kind === 'pinch') {
+    if (pointers.size < 2) { ui.drag = null; }
+    return;
+  }
+  endDrag();
+}
+svg.addEventListener('pointerup', pointerEnd);
+svg.addEventListener('pointercancel', pointerEnd);
+svg.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoomAt(evPt(e), Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0015)));
+}, { passive: false });
+
+// panel actions
+function nextName(base) {
+  const names = new Set(state.objects.map(o => o.name));
+  if (!names.has(base)) { return base; }
+  let i = 2;
+  while (names.has(`${base} ${i}`)) { i++; }
+  return `${base} ${i}`;
+}
+function addObject(preset) {
+  const T = TYPES[preset.type], [W, H] = stageSize();
+  let c = toWorld([W / 2, H / 2]);
+  if (!pointInPoly(c, state.plot)) { c = centroid(state.plot); }
+  const last = state.objects[state.objects.length - 1];
+  const rot = last ? last.rot : nearestQuarter(edgeAngle(longestEdge(state.plot)), 0);
+  mutate(() => {
+    const o = {
+      id: uid(), type: preset.type, name: nextName(preset.label), x: r3(c[0]), y: r3(c[1]), rot, building: T.building,
+      pts: preset.shape === 'L' ? clone(L_PTS) : rectPts(T.w, T.d),
+    };
+    state.objects.push(o);
+    ui.sel = o.id;
+  });
+  if (ui.tool !== 'select') { setTool('select'); }
+}
+$('#presets').innerHTML = PRESETS.map((p, i) =>
+  `<button type="button" class="preset t-${p.type}" data-preset="${i}"><span class="sw"></span><span><b>${p.label}</b><small>${p.note}</small></span></button>`).join('');
+$('#presets').addEventListener('click', e => { const b = e.target.closest('[data-preset]'); if (b) { addObject(PRESETS[+b.dataset.preset]); } });
+$('#f-type').innerHTML = Object.entries(TYPES).map(([k, t]) => `<option value="${k}">${t.label}</option>`).join('');
+
+$('#list').addEventListener('click', e => {
+  const b = e.target.closest('[data-id]');
+  if (!b) { return; }
+  ui.sel = b.dataset.id;
+  if (ui.tool !== 'select') { setTool('select'); } else { render(); }
+});
+
+function bindForm(form, apply) {
+  form.addEventListener('submit', e => e.preventDefault());
+  form.addEventListener('focusin', () => { ui.formSnap = snapshot(); });
+  form.addEventListener('input', e => { apply(e.target); save(); render(); });
+  form.addEventListener('change', () => { commit(ui.formSnap); ui.formSnap = snapshot(); render(); });
+}
+bindForm($('#sel-form'), el => {
+  const o = selObj();
+  if (!o) { return; }
+  const v = parseFloat(el.value), sz = objSize(o);
+  if (el.dataset.wall != null && v >= 0.3 && v <= 100) { setWallLength(o, +el.dataset.wall, v); }
+  if (el.id === 'f-name') { o.name = el.value.slice(0, 40); }
+  if (el.id === 'f-type') {
+    if (o.name === TYPES[o.type].label) { o.name = TYPES[el.value].label; }
+    o.type = el.value;
+    o.building = TYPES[el.value].building;
+  }
+  if (el.id === 'f-w' && v >= 0.3 && v <= 100) { setSize(o, v, sz.d); }
+  if (el.id === 'f-d' && v >= 0.3 && v <= 100) { setSize(o, sz.w, v); }
+  if (el.id === 'f-rot' && Number.isFinite(v)) { o.rot = normAngle(v); }
+  if (el.id === 'f-bld') { o.building = el.checked; }
+});
+$('#walls').addEventListener('focusin', e => { if (e.target.dataset.wall != null) { ui.hiWall = +e.target.dataset.wall; render(); } });
+$('#walls').addEventListener('focusout', () => { ui.hiWall = null; render(); });
+bindForm($('#set-form'), el => {
+  const v = parseFloat(el.value);
+  if (el.id === 'o-setback' && v >= 0 && v <= 20) { state.setback = v; }
+  if (el.id === 'o-setback' && el.value === '') { state.setback = 0; }
+  if (el.id === 'o-area') { state.officialArea = v > 0 ? v : 0; }
+  if (el.id === 'o-grid') { state.showGrid = el.checked; }
+  if (el.id === 'o-dims') { state.showDims = el.checked; }
+});
+
+function alignToEdge(o) {
+  const C = corners(o);
+  const e = edges(simplify(state.plot)).map(e => ({ e, d: polySegClosest(C, e[0], e[1]).d })).sort((x, y) => x.d - y.d)[0].e;
+  o.rot = nearestQuarter(edgeAngle(e), o.rot);
+}
+const withSel = fn => () => { const o = selObj(); if (o) { mutate(() => fn(o)); } };
+const rotate90 = withSel(o => { o.rot = normAngle(o.rot + 90); });
+const duplicate = withSel(o => {
+  const c = { ...clone(o), id: uid(), name: nextName(o.name.replace(/ \d+$/, '')), x: o.x + 1, y: o.y + 1 };
+  state.objects.push(c);
+  ui.sel = c.id;
+});
+const remove = withSel(o => { state.objects = state.objects.filter(x => x !== o); ui.sel = null; });
+$('#a-align').addEventListener('click', withSel(alignToEdge));
+$('#a-rot').addEventListener('click', rotate90);
+$('#a-dup').addEventListener('click', duplicate);
+$('#a-del').addEventListener('click', remove);
+$('#a-resetplot').addEventListener('click', () => { mutate(() => { state.plot = r3(DEFAULT_PLOT.map(p => rotV(p, state.north))); }); fit(); render(); });
+
+document.querySelectorAll('[data-tool]').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
+$('#b-undo').addEventListener('click', () => restore(undoStack, redoStack));
+$('#b-redo').addEventListener('click', () => restore(redoStack, undoStack));
+const mid = () => mul(stageSize(), 0.5);
+$('#b-zin').addEventListener('click', () => zoomAt(mid(), 1.3));
+$('#b-zout').addEventListener('click', () => zoomAt(mid(), 1 / 1.3));
+$('#b-fit').addEventListener('click', () => { fit(); render(); });
+$('#b-turn').addEventListener('click', () => { ui.measure = null; mutate(() => rotateState(state, 90)); fit(); render(); });
+
+// save & share
+const ioMsg = (t, err) => { const m = $('#io-msg'); m.textContent = t; m.className = 'msg' + (err ? ' err' : ''); };
+$('#a-copy').addEventListener('click', () => {
+  const text = snapshot();
+  const showText = () => { $('#io').hidden = false; $('#io-text').value = text; $('#io-text').select(); ioMsg('Copy the selected text with Ctrl+C.'); };
+  try {
+    navigator.clipboard.writeText(text).then(() => ioMsg('Plan copied. Paste it on the other device with Paste plan.'), showText);
+  } catch (e) { showText(); }
+});
+$('#a-import').addEventListener('click', () => { $('#io').hidden = false; $('#io-text').value = ''; $('#io-text').focus(); ioMsg('Paste the text you copied with Copy plan, then load it.'); });
+$('#io-close').addEventListener('click', () => { $('#io').hidden = true; ioMsg(''); });
+$('#io-load').addEventListener('click', () => {
+  let s = null;
+  try { s = normalize(JSON.parse($('#io-text').value)); } catch (e) { s = null; }
+  if (!s) { ioMsg('That text is not a plan. Paste the full text you got from Copy plan.', true); return; }
+  mutate(() => { state = s; ui.sel = null; });
+  fit();
+  render();
+  $('#io').hidden = true;
+  ioMsg('Plan loaded.');
+});
+let resetArmed = null;
+$('#a-reset').addEventListener('click', e => {
+  const b = e.currentTarget;
+  if (!resetArmed) {
+    b.textContent = 'Click again to reset';
+    resetArmed = setTimeout(() => { b.textContent = 'Start over'; resetArmed = null; }, 3000);
+    return;
+  }
+  clearTimeout(resetArmed);
+  resetArmed = null;
+  b.textContent = 'Start over';
+  mutate(() => { state = exampleState(); ui.sel = null; });
+  fit();
+  render();
+});
+
+window.addEventListener('keydown', e => {
+  if (e.target.closest('input, textarea, select')) { return; }
+  const ctrl = e.ctrlKey || e.metaKey, key = e.key.toLowerCase();
+  if (ctrl && key === 'z' && !e.shiftKey) { e.preventDefault(); restore(undoStack, redoStack); return; }
+  if (ctrl && (key === 'y' || (key === 'z' && e.shiftKey))) { e.preventDefault(); restore(redoStack, undoStack); return; }
+  if (ctrl || e.altKey) { return; }
+  if (key === 'v') { setTool('select'); return; }
+  if (key === 'm') { setTool('measure'); return; }
+  if (key === 'p') { setTool('plot'); return; }
+  if (key === 'escape') { ui.sel = null; ui.measure = null; render(); return; }
+  const o = selObj();
+  if (!o) { return; }
+  const step = e.shiftKey ? 1 : 0.1;
+  const moves = { arrowleft: [-step, 0], arrowright: [step, 0], arrowup: [0, -step], arrowdown: [0, step] };
+  if (moves[key]) {
+    e.preventDefault();
+    mutate(() => { o.x = r3(o.x + moves[key][0]); o.y = r3(o.y + moves[key][1]); });
+  } else if (key === 'delete' || key === 'backspace') {
+    e.preventDefault();
+    remove();
+  } else if (key === 'r') {
+    rotate90();
+  } else if (key === 'd') {
+    duplicate();
+  }
+});
+
+// share links carry the whole plan in the #plan=... part of the address
+const toB64 = s => btoa(unescape(encodeURIComponent(s))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const fromB64 = s => decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/'))));
+if (window.self === window.top) {
+  $('#a-link').hidden = false;
+  $('#a-link').addEventListener('click', () => {
+    const url = location.href.split('#')[0] + '#plan=' + toB64(snapshot());
+    const showText = () => { $('#io').hidden = false; $('#io-text').value = url; $('#io-text').select(); ioMsg('Copy the selected link with Ctrl+C.'); };
+    try {
+      navigator.clipboard.writeText(url).then(() => ioMsg('Link copied. Whoever opens it sees this plan and can change their own copy.'), showText);
+    } catch (e) { showText(); }
+  });
+}
+
+// boot
+try { state = normalize(JSON.parse(localStorage.getItem(KEY))); } catch (e) { state = null; }
+if (!state) { state = exampleState(); }
+if (location.hash.startsWith('#plan=')) {
+  let shared = null;
+  try { shared = normalize(JSON.parse(fromB64(location.hash.slice(6)))); } catch (e) { shared = null; }
+  if (shared) {
+    undoStack.push(snapshot());
+    state = shared;
+    save();
+    ioMsg('Loaded the plan from the link. Undo brings back the plan you had before.');
+  } else {
+    ioMsg('The link is broken, so your own plan is shown.', true);
+  }
+  history.replaceState(null, '', location.pathname + location.search);
+}
+setTool('select');
+new ResizeObserver(() => { if (!view.fitted) { fit(); } render(); }).observe(svg);
+})();
+</script>
+</body>
+</html>
