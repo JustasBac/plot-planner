@@ -102,6 +102,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 .btn:disabled { opacity: .4; cursor: default; }
 .btn.icon { min-width: 34px; padding-inline: 8px; }
+#b-theme { display: inline-grid; place-items: center; }
+#b-theme svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 .btn.danger { color: var(--bad); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 
@@ -408,6 +410,8 @@ button.person { cursor: pointer; }
       <button class="btn icon" id="b-zin" title="Zoom in" aria-label="Zoom in">+</button>
       <button class="btn" id="b-fit" title="Fit the plot to the screen">Fit</button>
       <button class="btn plot-only" id="b-turn" title="Turn the whole plan by 90°">Turn 90°</button>
+      <span class="sep"></span>
+      <button class="btn icon" id="b-theme" type="button"></button>
     </div>
   </header>
 
@@ -601,6 +605,7 @@ const ROOM_TYPES = {
   room: { label: 'Room', w: 4, d: 3.5, kind: 'room' },
   wall: { label: 'Wall', w: 3, d: 0.12, kind: 'wall' },
   door: { label: 'Door', w: 0.8, d: 0.4, kind: 'door' },
+  opening: { label: 'Opening', w: 0.9, d: 0.4, kind: 'door', glyph: 'opening' },
   window: { label: 'Window', w: 1.2, d: 0.4, kind: 'window' },
   sofa: { label: 'Sofa', w: 2.28, d: 0.95, kind: 'furn', glyph: 'sofa', ikea: [{ w: 2.28, d: 0.95, name: 'KIVIK 3-seat sofa', size: '228 × 95 cm' }, { w: 1.9, d: 0.95, name: 'KIVIK 2-seat sofa', size: '190 × 95 cm' }] },
   sofaL: { label: 'Corner sofa', w: 2.57, d: 1.95, kind: 'furn', glyph: 'sofaL', lshape: [0.95, 0.95] },
@@ -637,6 +642,7 @@ const ROOM_PRESETS = [
   { group: 'Doors & windows', type: 'door', label: 'Room door', w: 0.8 },
   { group: 'Doors & windows', type: 'door', label: 'Bathroom door', w: 0.7 },
   { group: 'Doors & windows', type: 'door', label: 'Front door', w: 0.9 },
+  { group: 'Doors & windows', type: 'opening', label: 'Opening', w: 0.9, note: '0.9 m wide, no door' },
   { group: 'Doors & windows', type: 'window', label: 'Small window', w: 0.6 },
   { group: 'Doors & windows', type: 'window', label: 'Window', w: 1.2 },
   { group: 'Doors & windows', type: 'window', label: 'Large window', w: 2.4 },
@@ -1540,6 +1546,9 @@ function glyph(o) {
       const r = Math.min(w, d) * 0.3;
       return R(x0, y0, w, d, 0.04, 'g-base') + L(x0 + 0.06, y0 + 0.08, x1 - 0.06, y0 + 0.08) + C(cx, cy + 0.04, r, 'g-light') + C(cx, cy + 0.04, r * 0.62, 'g-line');
     }
+    case 'opening':
+      // a doorway without a door: just the gap, with the wall edges marked
+      return L(x0, y0, x0, y1, 'leaf') + L(x1, y0, x1, y1, 'leaf');
     case 'door': {
       // hinge on the inner side; "mirror" moves it to the other end
       const hx = o.mirror ? x1 : x0, ex = o.mirror ? x0 : x1;
@@ -1580,7 +1589,7 @@ function pieceIcon(type, w, d, size) {
   let body = glyph(o), y1 = b.y1;
   if (T.kind === 'door') {
     body = `<rect class="g-base" x="${b.x0 - 0.25}" y="${b.y0}" width="0.25" height="${b.h}"/><rect class="g-base" x="${b.x1}" y="${b.y0}" width="0.25" height="${b.h}"/>` + body;
-    y1 = b.y1 + b.w;
+    if (T.glyph !== 'opening') { y1 = b.y1 + b.w; }
   }
   if (T.kind === 'window') { body = `<rect class="g-light" x="${b.x0}" y="${b.y0}" width="${b.w}" height="${b.h}"/>` + body; }
   const pad = 0.06, x0 = b.x0 - (T.kind === 'door' ? 0.25 : 0) - pad, wv = b.x1 - b.x0 + (T.kind === 'door' ? 0.5 : 0) + 2 * pad, hv = y1 - b.y0 + 2 * pad;
@@ -1612,6 +1621,34 @@ $('#presets').addEventListener('pointermove', e => {
 });
 $('#presets').addEventListener('pointerleave', () => { tip.hidden = true; });
 $('#presets').addEventListener('click', () => { tip.hidden = true; });
+let coveredRooms = new Set();
+svg.addEventListener('pointermove', e => {
+  let room = null;
+  if (e.pointerType === 'mouse' && !ui.drag && host()) {
+    const w = toWorld(evPt(e));
+    room = items().filter(o => kindOf(o) === 'room' && coveredRooms.has(o.id) && pointInPoly(w, corners(o)))
+      .sort((a, b) => objArea(a) - objArea(b))[0] || null;
+  }
+  if (!room) {
+    if (ui.roomTip) {
+      tip.hidden = true;
+      ui.roomTip = false;
+    }
+    return;
+  }
+  const sz = objSize(room);
+  tip.innerHTML = `<b>${esc(room.name)}</b><span>${fmt(objArea(room).toFixed(1))} m²${isRect(room) ? ` · ${fmt(sz.w)} × ${fmt(sz.d)} m` : ''}</span>`;
+  tip.hidden = false;
+  ui.roomTip = true;
+  tip.style.left = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 6) + 'px';
+  tip.style.top = Math.min(e.clientY + 18, innerHeight - tip.offsetHeight - 6) + 'px';
+});
+svg.addEventListener('pointerleave', () => {
+  if (ui.roomTip) {
+    tip.hidden = true;
+    ui.roomTip = false;
+  }
+});
 
 // several items selected at once in the room planner; ui.sel is used when there is just one
 const selIds = () => (ui.multi.length > 1 ? ui.multi : ui.sel && ui.sel !== BUILDING ? [ui.sel] : []);
@@ -1666,8 +1703,8 @@ function openMenu(p, id) {
   } else {
     if (!host() && canHaveRooms(o)) { acts.push(['rooms', 'Open room planner']); }
     if (isOpening(o)) {
-      acts.push(['flip', 'Flip to the other side']);
-      if (kindOf(o) === 'door') { acts.push(['mirror', 'Move hinge to the other end']); }
+      if (TYPES[o.type].glyph !== 'opening') { acts.push(['flip', 'Flip to the other side']); }
+      if (kindOf(o) === 'door' && TYPES[o.type].glyph !== 'opening') { acts.push(['mirror', 'Move hinge to the other end']); }
     } else {
       acts.push(['rot', 'Rotate 90°']);
     }
@@ -1780,7 +1817,8 @@ function render() {
   const edgeLabel = (P, a, b, cls, off, text) => {
     const sa = S(a), sb = S(b);
     if (dist(sa, sb) < 30) { return ''; }
-    const m = add(mul(add(sa, sb), 0.5), mul(inwardNormal(P, a, b), -off));
+    // the label is pushed off the wall in screen terms, so the direction turns with the view
+    const m = add(mul(add(sa, sb), 0.5), mul(rotV(inwardNormal(P, a, b), view.rot), -off));
     return `<text class="lbl ${cls}" x="${f(m[0])}" y="${f(m[1])}" ${rotAt(upright(deg(Math.atan2(sb[1] - sa[1], sb[0] - sa[0]))), m)}>${text}</text>`;
   };
   if (rh) {
@@ -1793,7 +1831,7 @@ function render() {
   }
 
   const LAYER = { room: 0, wall: 1, plot: 1, furn: 1, car: 2, door: 2, window: 2 }, roomFloor = rh ? innerOutline() : null;
-  const statuses = new Map(items().map(o => [o.id, objStatus(o)]));
+  const statuses = new Map(items().map(o => [o.id, objStatus(o)])), roomLabels = [];
   for (const o of items().slice().sort((a, b) => LAYER[kindOf(a)] - LAYER[kindOf(b)])) {
     const st = statuses.get(o.id), C = corners(o), c = S(polyCentroid(C)), sz = objSize(o), kind = kindOf(o);
     h += `<g data-obj="${esc(o.id)}" class="obj t-${o.type} k-${kind} st-${st.level}${o.id === ui.sel || ui.multi.includes(o.id) ? ' sel' : ''}"><polygon points="${pts(C)}"/>`;
@@ -1827,11 +1865,25 @@ function render() {
     ].sort((a, b) => Math.abs(a.ang) - Math.abs(b.ang));
     const pick = options[1].lines.length > options[0].lines.length ? options[1] : options[0];
     const lines = pick.lines, tr = rotAt(pick.ang, c);
+    if (kind === 'room') { roomLabels.push({ id: o.id, c, lines, want: wanted.length, ang: pick.ang }); }
     lines.forEach((l, i) => {
       const y = c[1] + (i - (lines.length - 1) / 2) * 17;
       h += `<text class="${l.cls}" x="${f(c[0])}" y="${f(y)}" ${tr}>${l.text}</text>`;
     });
     h += '</g>';
+  }
+
+  // rooms whose label does not fit or is hidden under furniture get a hover tooltip instead
+  coveredRooms = new Set();
+  const blockers = items().filter(x => ['furn', 'door', 'window', 'wall'].includes(kindOf(x))).map(x => corners(x).map(S));
+  for (const r of roomLabels) {
+    if (r.lines.length < r.want) {
+      coveredRooms.add(r.id);
+      continue;
+    }
+    const wide = Math.max(...r.lines.map(labelWidth)) / 2, high = r.lines.length * 17 / 2;
+    const box = [[-wide, -high], [wide, -high], [wide, high], [-wide, high]].map(p => add(r.c, rotV(p, r.ang)));
+    if (blockers.some(b => polysOverlap(box, b))) { coveredRooms.add(r.id); }
   }
 
   for (const r of rh ? wallRegions() : []) {
@@ -2453,6 +2505,33 @@ const mid = () => mul(stageSize(), 0.5);
 $('#b-zin').addEventListener('click', () => zoomAt(mid(), 1.3));
 $('#b-zout').addEventListener('click', () => zoomAt(mid(), 1 / 1.3));
 $('#b-fit').addEventListener('click', () => { fit(); render(); });
+
+// light or dark: follows the computer until chosen here, then the choice is kept in this browser
+const THEME_KEY = 'plot-planner.theme';
+const SUN = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>';
+const MOON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11z"/></svg>';
+const isDark = () => {
+  const t = document.documentElement.dataset.theme;
+  return t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+};
+function showThemeButton() {
+  const dark = isDark(), b = $('#b-theme');
+  b.innerHTML = dark ? SUN : MOON;
+  b.title = dark ? 'Switch to light mode' : 'Switch to dark mode';
+  b.setAttribute('aria-label', b.title);
+}
+function setTheme(t) {
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem(THEME_KEY, t); } catch (e) { /* storage blocked */ }
+  showThemeButton();
+}
+try {
+  const saved = localStorage.getItem(THEME_KEY);
+  if (saved === 'light' || saved === 'dark') { document.documentElement.dataset.theme = saved; }
+} catch (e) { /* storage blocked */ }
+showThemeButton();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', showThemeButton);
+$('#b-theme').addEventListener('click', () => setTheme(isDark() ? 'light' : 'dark'));
 $('#b-turn').addEventListener('click', () => { ui.measure = null; mutate(() => rotateState(state, 90)); fit(); render(); });
 
 // save & share
