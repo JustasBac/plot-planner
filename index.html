@@ -997,9 +997,9 @@ function normalize(s) {
   return out;
 }
 const snapshot = () => JSON.stringify(state);
-function save() {
+function save(prev) {
   try { localStorage.setItem(KEY, snapshot()); } catch (e) { /* storage blocked */ }
-  scheduleUpload();
+  scheduleUpload(prev);
 }
 function commit(prev) {
   if (prev == null || prev === snapshot()) { return; }
@@ -1008,7 +1008,7 @@ function commit(prev) {
   if (undoStack.length > 150) { undoStack.shift(); }
   redoStack.length = 0;
   claimPage();
-  save();
+  save(prev);
 }
 function keepPageValid() {
   if (!state.pages.some(p => p.id === ui.page)) { setPage(state.pages[0].id); }
@@ -1033,7 +1033,7 @@ function restore(from, to) {
     if (busy.has(p.id) && live.has(p.id)) { p.objects = live.get(p.id); }
   }
   keepPageValid();
-  save();
+  save(to[to.length - 1]);
   render();
 }
 const BUILDING = '@building';
@@ -2399,7 +2399,7 @@ $('#presets').addEventListener('click', e => { const b = e.target.closest('[data
 function bindForm(form, apply) {
   form.addEventListener('submit', e => e.preventDefault());
   form.addEventListener('focusin', () => { ui.formSnap = snapshot(); });
-  form.addEventListener('input', e => { apply(e.target); save(); render(); });
+  form.addEventListener('input', e => { const prev = snapshot(); apply(e.target); save(prev); render(); });
   form.addEventListener('change', () => { commit(ui.formSnap); ui.formSnap = snapshot(); render(); });
 }
 bindForm($('#sel-form'), el => {
@@ -2736,9 +2736,9 @@ function startRename(id) {
   const finish = ok => {
     if (ui.renaming !== id) { return; }
     ui.renaming = null;
+    if (cloud.waiting) { rebuild(); }
     const v = input.value.trim().slice(0, 40), p = state.pages.find(x => x.id === id);
     if (ok && v && p && v !== p.name) { mutate(() => { p.name = v; }); } else { render(); }
-    if (cloud.waiting) { rebuild(); }
   };
   input.addEventListener('keydown', e => {
     e.stopPropagation();
@@ -2785,7 +2785,7 @@ const ONLINE_MS = 75000, IDLE_MS = 180000, BEAT_MS = 15000;
 // base = what is stored online; the plan document holds the shared part, each page's shapes have their own document
 const cloud = {
   api: null, db: null, ref: null, id: null, timer: null, loaded: false, waiting: false,
-  base: { main: null, pages: {} }, dirtyMain: false, dirtyPages: new Set(), people: {}, clockOffset: 0,
+  base: { main: null, pages: {} }, dirtyMain: false, dirtyPages: new Set(), deletedPages: new Set(), people: {}, clockOffset: 0,
 };
 const me = { id: '', name: '', pageSince: Date.now(), active: Date.now() };
 try {
@@ -2821,11 +2821,18 @@ function notArrived() {
   const pages = (parseJson(cloud.base.main) || {}).pages || [];
   return new Set(pages.filter(p => !Array.isArray(p.objects) && cloud.base.pages[p.id] == null).map(p => p.id));
 }
-function scheduleUpload() {
+// only what this person changed is sent, so an old copy of a page someone else just edited never overwrites it
+function scheduleUpload(prev) {
   if (!cloud.ref || !cloud.loaded) { return; }
   const mine = splitState(state), missing = notArrived();
-  cloud.dirtyMain = mine.main !== cloud.base.main;
-  cloud.dirtyPages = new Set(Object.keys(mine.pages).filter(id => !missing.has(id) && mine.pages[id] !== cloud.base.pages[id]));
+  const before = prev != null ? splitState(JSON.parse(prev)) : cloud.base;
+  if (mine.main !== before.main) { cloud.dirtyMain = true; }
+  for (const id of Object.keys(mine.pages)) {
+    if (!missing.has(id) && mine.pages[id] !== before.pages[id]) { cloud.dirtyPages.add(id); }
+  }
+  for (const id of Object.keys(before.pages)) {
+    if (!(id in mine.pages)) { cloud.deletedPages.add(id); }
+  }
   clearTimeout(cloud.timer);
   setSync('Saving…');
   cloud.timer = setTimeout(upload, 700);
@@ -2834,27 +2841,27 @@ function upload() {
   clearTimeout(cloud.timer);
   cloud.timer = null;
   if (!cloud.loaded) { return; }
-  const api = cloud.api, at = api.serverTimestamp(), mine = splitState(state), jobs = [], missing = notArrived();
-  const knownPages = ((parseJson(cloud.base.main) || {}).pages || []).map(p => p.id);
-  if (mine.main !== cloud.base.main) { jobs.push(api.setDoc(cloud.ref, { data: mine.main, updatedAt: at })); }
-  for (const [id, data] of Object.entries(mine.pages)) {
-    if (missing.has(id)) {
-      delete mine.pages[id];
-    } else if (data !== cloud.base.pages[id]) {
+  const api = cloud.api, at = api.serverTimestamp(), mine = splitState(state), jobs = [];
+  if (cloud.dirtyMain && mine.main !== cloud.base.main) {
+    jobs.push(api.setDoc(cloud.ref, { data: mine.main, updatedAt: at }));
+    cloud.base.main = mine.main;
+  }
+  for (const id of cloud.dirtyPages) {
+    const data = mine.pages[id];
+    if (data != null && data !== cloud.base.pages[id]) {
       jobs.push(api.setDoc(pageRef(id), { data, updatedAt: at }));
+      cloud.base.pages[id] = data;
     }
   }
-  // only pages this person deleted; pages someone else just added are not known locally yet
-  for (const id of knownPages) {
+  for (const id of cloud.deletedPages) {
     if (!(id in mine.pages)) {
       jobs.push(api.deleteDoc(pageRef(id)));
       delete cloud.base.pages[id];
     }
   }
-  cloud.base.main = mine.main;
-  Object.assign(cloud.base.pages, mine.pages);
   cloud.dirtyMain = false;
   cloud.dirtyPages = new Set();
+  cloud.deletedPages = new Set();
   Promise.all(jobs).then(() => { if (!cloud.timer) { setSync('Saved online', 'ok'); } }, () => setSync('Not saved online', 'err'));
 }
 // rebuilds the plan from what is online, keeping local changes that are not uploaded yet
@@ -3025,6 +3032,7 @@ async function startCloud() {
       if (!snap.exists()) {
         if (!snap.metadata.fromCache && !cloud.loaded) {
           cloud.loaded = true;
+          scheduleUpload();
           upload();
         }
         return;
@@ -3036,6 +3044,7 @@ async function startCloud() {
         if (first) {
           cloud.dirtyMain = false;
           cloud.dirtyPages = new Set();
+          cloud.deletedPages = new Set();
         }
         rebuild();
         // plans saved before pages had their own documents are split up once
