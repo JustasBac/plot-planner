@@ -508,7 +508,7 @@ button.person { cursor: pointer; }
       <ul class="keys">
         <li><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> nudge 10 cm, with <kbd>Shift</kbd> 1 m</li>
         <li><kbd>R</kbd> rotate 90°, <kbd>D</kbd> duplicate, <kbd>Del</kbd> delete</li>
-        <li><kbd>Shift</kbd> while rotating turns off snapping</li>
+        <li><kbd>Shift</kbd> while dragging: 1 cm steps and no snapping</li>
         <li>Double-click a wall handle to add corners, a corner to remove it</li>
         <li>Right-click (or double-click) a house to plan its rooms</li>
       </ul>
@@ -952,7 +952,7 @@ function exampleState() {
     return { id: uid(), type, name: TYPES[type].label, x: r3(p[0]), y: r3(p[1]), rot, building: TYPES[type].building, pts: rectPts(w, d) };
   };
   const s = {
-    plot, plotV: PLOT_VERSION, north: 0, setback: 3, officialArea: 950, showGrid: true, showDims: true, example: true,
+    plot, plotV: PLOT_VERSION, north: 0, setback: 3, officialArea: 900, showGrid: true, showDims: true, example: true,
     pages: [{ id: uid(), name: 'Plan 1', objects: [mk('house', 0, 17, 12, 10), mk('carport', -4.5, 6.5, 6, 6), mk('terrace', 1, 24, 6, 4), mk('driveway', -4.5, 1.85, 3.5, 3.3)] }],
   };
   straighten(s);
@@ -1161,7 +1161,7 @@ function renderPresets() {
 }
 
 // doors and windows sit on the middle line of an outer wall, or on the edge of a room
-function snapOpening(o, p, force) {
+function snapOpening(o, p, force, step = 0.05) {
   const h = host(), t = wallOf(h), w = objSize(o).w;
   const mid = inset(h.pts, t / 2) || h.pts;
   const segs = edges(mid).map(([a, b]) => ({ a, b, depth: t, n: inwardNormal(mid, a, b) }));
@@ -1178,13 +1178,13 @@ function snapOpening(o, p, force) {
   for (const s of segs) {
     const L = dist(s.a, s.b);
     if (L < w) { continue; }
-    const u = mul(sub(s.b, s.a), 1 / L), along = clamp(rnd(dot(sub(p, s.a), u), 0.05), w / 2, L - w / 2);
+    const u = mul(sub(s.b, s.a), 1 / L), along = clamp(rnd(dot(sub(p, s.a), u), step), w / 2, L - w / 2);
     const q = add(s.a, mul(u, along)), dd = dist(p, q);
     if (!best || dd < best.dd) { best = { dd, q, s }; }
   }
   if (!best || (!force && best.dd > 0.7)) {
-    o.x = r3(rnd(p[0], 0.05));
-    o.y = r3(rnd(p[1], 0.05));
+    o.x = r3(rnd(p[0], step));
+    o.y = r3(rnd(p[1], step));
     return;
   }
   // the door opens towards the inside of the house or room unless it was flipped
@@ -2090,11 +2090,11 @@ function updateListAndSelection(statuses, rh) {
 }
 
 const HINTS = {
-  select: 'Drag a shape to move it · drag orange wall handles to move a wall · drag corners · double-click a wall handle to add corners · round handle rotates',
+  select: 'Drag a shape to move it · drag orange wall handles to move a wall · drag corners · double-click a wall handle to add corners · round handle rotates · hold Shift for 1 cm steps without snapping',
   measure: 'Drag between two points to measure. It snaps to corners.',
   wall: 'Press and drag to draw a wall · it stays straight unless you hold Shift · its ends snap to other walls · Esc or Move to stop',
   plot: 'Drag the red corners to match your survey. Edge lengths update as you drag.',
-  room: 'Drag on empty floor to select several items · Shift+click adds one · Ctrl+C / Ctrl+V copy and paste · middle mouse or Space+drag moves the view · click the outer wall to change the building',
+  room: 'Drag on empty floor to select several items · Shift+click adds one · Ctrl+C / Ctrl+V copy and paste · hold Shift while dragging for 1 cm steps without snapping · middle mouse or Space+drag moves the view · click the outer wall to change the building',
 };
 function setTool(t) {
   ui.tool = t;
@@ -2256,7 +2256,7 @@ svg.addEventListener('pointermove', e => {
   }
   const d = ui.drag;
   if (!d) { return; }
-  const w = toWorld(p), o = selObj();
+  const w = toWorld(p), o = selObj(), step = e.shiftKey ? 0.01 : 0.05;
   if (d.kind === 'pinch') {
     if (pointers.size < 2) { return; }
     const [a, b] = [...pointers.values()], m = mul(add(a, b), 0.5);
@@ -2272,7 +2272,7 @@ svg.addEventListener('pointermove', e => {
   } else if (d.kind === 'box') {
     d.e = p;
   } else if (d.kind === 'gmove') {
-    const dx = rnd(w[0] - d.w0[0], 0.05), dy = rnd(w[1] - d.w0[1], 0.05), byId = new Map(items().map(it => [it.id, it]));
+    const dx = rnd(w[0] - d.w0[0], step), dy = rnd(w[1] - d.w0[1], step), byId = new Map(items().map(it => [it.id, it]));
     for (const [id, x, y] of d.orig) {
       const it = byId.get(id);
       if (it) {
@@ -2286,10 +2286,10 @@ svg.addEventListener('pointermove', e => {
     state.plot[d.i] = [rnd(w[0], 0.01), rnd(w[1], 0.01)];
   } else if (o && d.kind === 'move') {
     if (host() && isOpening(o)) {
-      snapOpening(o, sub(w, d.off));
+      snapOpening(o, sub(w, d.off), false, step);
     } else {
-      o.x = r3(rnd(w[0] - d.off[0], 0.05));
-      o.y = r3(rnd(w[1] - d.off[1], 0.05));
+      o.x = r3(rnd(w[0] - d.off[0], step));
+      o.y = r3(rnd(w[1] - d.off[1], step));
       if (host() && !e.shiftKey) { if (kindOf(o) === 'wall') { snapWallEnds(o); } else { snapToWalls(o); } }
     }
   } else if (o && d.kind === 'rot') {
@@ -2297,8 +2297,8 @@ svg.addEventListener('pointermove', e => {
     o.rot = e.shiftKey ? normAngle(rnd(a, 0.5)) : snapAngle(a);
   } else if (o && d.kind === 'vertex') {
     const o0 = d.o0, n = o0.pts.length;
-    let l = toLocal(o0, w).map(v => rnd(v, 0.05));
-    const tol = Math.max(0.15, 8 / view.k);
+    let l = toLocal(o0, w).map(v => rnd(v, step));
+    const tol = e.shiftKey ? 0 : Math.max(0.15, 8 / view.k);
     for (const q of [o0.pts[(d.i - 1 + n) % n], o0.pts[(d.i + 1) % n]]) {
       if (Math.abs(l[0] - q[0]) < tol) { l[0] = q[0]; }
       if (Math.abs(l[1] - q[1]) < tol) { l[1] = q[1]; }
@@ -2314,7 +2314,7 @@ svg.addEventListener('pointermove', e => {
   } else if (o && d.kind === 'wall') {
     const o0 = d.o0, n = o0.pts.length, a = o0.pts[d.i], b = o0.pts[(d.i + 1) % n];
     const u = norm(sub(b, a)), nn = [-u[1], u[0]];
-    let off = rnd(dot(sub(toLocal(o0, w), d.l0), nn), 0.05);
+    let off = rnd(dot(sub(toLocal(o0, w), d.l0), nn), step);
     if (host() && !e.shiftKey && (kindOf(o0) === 'room' || o0.isBuilding)) {
       const wa = add([o0.x, o0.y], rotV(add(a, mul(nn, off)), o0.rot)), wb = add([o0.x, o0.y], rotV(add(b, mul(nn, off)), o0.rot));
       const axis = Math.abs(wa[0] - wb[0]) < 1e-6 ? 0 : Math.abs(wa[1] - wb[1]) < 1e-6 ? 1 : -1;
